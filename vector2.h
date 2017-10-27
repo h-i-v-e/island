@@ -1,0 +1,92 @@
+//
+//  vector2.h
+//  World Maker
+//
+//  Created by Jerome Johnson on 28/09/17.
+//  Copyright © 2017 Jerome Johnson. All rights reserved.
+//
+
+#ifndef vector2_h
+#define vector2_h
+
+#include <cmath>
+#include <iostream>
+
+namespace worldmaker {
+    struct Vector2{
+        Vector2(){}
+        
+        Vector2(float x, float y) : x(x), y(y){}
+        
+        const Vector2 &operator()(float x, float y){
+            this->x = x;
+            this->y = y;
+            return *this;
+        }
+        
+        Vector2 operator+(const Vector2 &other) const{
+            return Vector2(x + other.x, y + other.y);
+        }
+        
+        Vector2 &operator+=(const Vector2 &other){
+            x += other.x;
+            y += other.y;
+            return *this;
+        }
+        
+        Vector2 operator-(const Vector2 &other) const{
+            return Vector2(x - other.x, y - other.y);
+        }
+        
+        Vector2 operator*(float f) const{
+            return Vector2(x * f, y * f);
+        }
+        
+        Vector2 operator/(float f) const{
+            return Vector2(x / f, y / f);
+        }
+        
+        float sqrMagnitude() const{
+            return x * x + y * y;
+        }
+        
+        float magnitude() const{
+            return sqrtf(sqrMagnitude());
+        }
+        
+        Vector2 normalized() const{
+            float mag = magnitude();
+            return Vector2(x / mag, y / mag);
+        }
+        
+        bool operator == (const Vector2 &other) const{
+            return x == other.x && y == other.y;
+        }
+        
+        bool operator != (const Vector2 &other) const{
+            return x != other.x && y != other.y;
+        }
+        
+        bool operator < (const Vector2 &other) const{
+            if (y < other.y){
+                return true;
+            }
+            if (y > other.y){
+                return false;
+            }
+            return x < other.x;
+        }
+        
+        float dot(const Vector2 &other) const{
+            return x * other.x + y * other.y;
+        }
+
+        float x, y;
+        
+        friend std::ostream &operator<<(std::ostream &o, const Vector2 &vec){
+            return o << "Vector2(" << vec.x << ", " << vec.y << ')';
+        }
+    };
+}
+
+#endif /* vector2_h */
