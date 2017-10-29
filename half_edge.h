@@ -19,7 +19,7 @@ namespace worldmaker{
     struct EmptyData{
     };
     
-    template<class FaceData = EmptyData>
+    template<class FaceData = EmptyData, class VertexData = EmptyData>
     class HalfEdge
     {
     public:
@@ -138,14 +138,16 @@ namespace worldmaker{
             
         private:
             
-            const HalfEdge *edge;
+            HalfEdge *edge;
             FaceData mData;
-            
-            Face (const HalfEdge *edge) : edge(edge){
-            }
             
         public:
             typedef std::set<Face> Set;
+            
+            Face (HalfEdge *edge) : edge(edge){
+            }
+            
+            Face() : edge(nullptr){}
             
             HalfEdgeIterable halfEdges() const{
                 return HalfEdgeIterable(edge);
@@ -167,6 +169,10 @@ namespace worldmaker{
                 return edge;
             }
             
+            HalfEdge *halfEdge(){
+                return edge;
+            }
+            
             bool operator < (const Face &face) const{
                 return edge < face.edge;
             }
@@ -177,10 +183,13 @@ namespace worldmaker{
         class Vertex{
         private:
             const HalfEdge *edge;
+            VertexData mData;
+            
+        public:
             
             Vertex (const HalfEdge *edge) : edge(edge){}
             
-        public:
+            Vertex () : edge(nullptr){}
             
             friend class HalfEdge;
             
@@ -197,6 +206,14 @@ namespace worldmaker{
                     e = e->pair->next;
                 } while (e != edge);
                 return true;
+            }
+            
+            VertexData &data(){
+                return mData;
+            }
+            
+            const VertexData &data() const{
+                return mData;
             }
             
             struct InboundHalfEdgeIterator : public HalfEdgeIteratorBase{
@@ -242,9 +259,11 @@ namespace worldmaker{
         };
         
         Vector2 vector2;
-        HalfEdge *pair, *next, *mFace;
+        HalfEdge *pair, *next;
+        Face *mFace;
+        Vertex *mVertex;
         
-        HalfEdge() : pair(nullptr), next(nullptr), mFace(nullptr){}
+        HalfEdge() : pair(nullptr), next(nullptr), mFace(nullptr), mVertex(nullptr){}
         
         bool operator == (const HalfEdge &other) const{
             return vector2 == other.vector2 && pair == other.pair && next == other.next;
@@ -270,12 +289,20 @@ namespace worldmaker{
             return next < other.next;
         }
         
-        Face face() const {
-            return mFace;
+        const Face &face() const {
+            return *mFace;
         }
         
-        Vertex vertex () const{
-            return this;
+        Face &face(){
+            return *mFace;
+        }
+        
+        const Vertex &vertex () const{
+            return *mVertex;
+        }
+        
+        Vertex &vertex(){
+            return *mVertex;
         }
         
         Edge edge() const {
@@ -327,18 +354,19 @@ namespace worldmaker{
         }
         
         template <class Itr, class Allocator>
-        static HalfEdge *fromPolygon (Itr begin, Itr end, Allocator &allocator){
+        static HalfEdge *fromPolygon (Itr begin, Itr end, Allocator &allocator, HalfEdge::Face *face){
             if (begin == end){
                 return nullptr;
             }
             HalfEdge *first = allocator.allocate();
-            first->mFace = first;
+            face->edge = first;
+            first->mFace = face;
             first->vector2 = *begin;
             HalfEdge *last = first;
             for (++begin; begin != end; ++begin){
                 last->next = allocator.allocate();
                 last->next->vector2 = *begin;
-                last->next->mFace = first;
+                last->next->mFace = face;
                 last = last->next;
             }
             last->next = first;
@@ -346,9 +374,11 @@ namespace worldmaker{
         }
         
         template<class Itr>
-        static void Glue(Itr from, Itr to){
+        static void Glue(Itr from, Itr to, HalfEdge::Vertex *vertex){
+            vertex->edge = from->second;
             for (Itr i = from; i != to; ++i){
-                HalfEdge<FaceData> *last = i->second->findLast();
+                i->second->mVertex = vertex;
+                HalfEdge<FaceData, VertexData> *last = i->second->findLast();
                 if (last->pair){
                     continue;
                 }
@@ -375,7 +405,17 @@ namespace worldmaker{
         public:
             void add(HalfEdge *edge);
             
-            void construct();
+            template <class VertexAllocator>
+            void construct(VertexAllocator &allocator){
+                typename Fans::iterator start = fans.begin();
+                for (auto i = fans.begin(); i != fans.end(); ++i){
+                    if (start->first != i->first){
+                        Glue(start, i, allocator.allocate());
+                        start = i;
+                    }
+                }
+                Glue(start, fans.end(), allocator.allocate());
+            }
             
             friend std::ostream &operator<<(std::ostream &out, const Builder &builder){
                 for (auto i : builder.fans){
@@ -386,8 +426,8 @@ namespace worldmaker{
         };
     };
     
-    template<class FaceData>
-    void HalfEdge<FaceData>::Builder::add(HalfEdge *edge){
+    template<class FaceData, class VertexData>
+    void HalfEdge<FaceData, VertexData>::Builder::add(HalfEdge *edge){
         HalfEdge *next = edge;
         do {
             fans.insert(std::make_pair(next->vector2, next));
@@ -395,19 +435,8 @@ namespace worldmaker{
         } while (next != edge);
     }
     
-    template<class FaceData>
-    void HalfEdge<FaceData>::Builder::construct(){
-        typename Fans::iterator start = fans.begin();
-        for (auto i = fans.begin(); i != fans.end(); ++i){
-            if (start->first != i->first){
-                Glue(start, i);
-                start = i;
-            }
-        }
-    }
-    
-    template<class FaceData>
-    Vector2 HalfEdge<FaceData>::Face::calculateCentroid() const{
+    template<class FaceData, class VertexData>
+    Vector2 HalfEdge<FaceData, VertexData>::Face::calculateCentroid() const{
         Vector2 total(0.0f, 0.0f);
         float count = 0.0f;
         const HalfEdge *next = edge;

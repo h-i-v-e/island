@@ -14,6 +14,23 @@ namespace worldmaker{
         Vector3(float x, float y, float z) : x(x), y(y), z(z){}
 
         float x, y, z;
+        
+        Vector3 operator-(const Vector3 &other) const{
+            return Vector3(x - other.x, y - other.y, z - other.z);
+        }
+        
+        float squareMagnitude() const{
+            return (x * x) + (y * y) + (z * z);
+        }
+        
+        float magnitude() const{
+            return sqrtf(squareMagnitude());
+        }
+        
+        Vector3 normalized() const{
+            float mag = magnitude();
+            return Vector3(x / mag, y / mag, z / mag);
+        }
     };
 }
 

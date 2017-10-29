@@ -6,17 +6,17 @@
 //  Copyright © 2017 Jerome Johnson. All rights reserved.
 //
 
-#ifndef half_edge_pool_h
-#define half_edge_pool_h
+#ifndef iterable_object_pool_h
+#define iterable_object_pool_h
 
 #include "object_pool.h"
 
 namespace worldmaker{
-    template <class HalfEdge>
-    class HalfEdgePool{
+    template <class Type>
+    class IterableObjectPool{
     private:
         struct PoolItem{
-            HalfEdge halfEdge;
+            Type type;
             PoolItem *previousAllocated;
         };
         
@@ -25,13 +25,13 @@ namespace worldmaker{
         PoolItem *lastAllocated;
         
     public:
-        HalfEdgePool(size_t allocationBlocks) : pool(allocationBlocks), lastAllocated(nullptr){}
+        IterableObjectPool(size_t allocationBlocks) : pool(allocationBlocks), lastAllocated(nullptr){}
 
-        HalfEdge *allocate(){
+        Type *allocate(){
             PoolItem *item = pool.allocate();
             item->previousAllocated = lastAllocated;
             lastAllocated = item;
-            return &item->halfEdge;
+            return &item->type;
         }
         
         void drain(){
@@ -41,6 +41,40 @@ namespace worldmaker{
                 lastAllocated = next;
             }
         }
+        
+        class iterator{
+        protected:
+            PoolItem *item;
+        public:
+            iterator(PoolItem *item) : item(item){}
+            
+            iterator &operator++(){
+                item = item->previousAllocated;
+                return *this;
+            }
+            
+            iterator operator++(int){
+                iterator out(item);
+                item = item->previousAllocated;
+                return out;
+            }
+            
+            Type &operator*(){
+                return item->type;
+            }
+            
+            Type *operator->(){
+                return &item->type;
+            }
+            
+            bool operator==(const iterator &other) const{
+                return item == other.item;
+            }
+            
+            bool operator!=(const iterator &other) const{
+                return item != other.item;
+            }
+        };
         
         class const_iterator{
         protected:
@@ -59,12 +93,12 @@ namespace worldmaker{
                 return out;
             }
             
-            const HalfEdge &operator*(){
-                return item->halfEdge;
+            const Type &operator*(){
+                return item->type;
             }
             
-            const HalfEdge *operator->(){
-                return &item->halfEdge;
+            const Type *operator->(){
+                return &item->type;
             }
             
             bool operator==(const const_iterator &other) const{
@@ -76,6 +110,14 @@ namespace worldmaker{
             }
         };
         
+        iterator begin(){
+            return lastAllocated;
+        }
+        
+        iterator end(){
+            return nullptr;
+        }
+        
         const_iterator begin() const{
             return lastAllocated;
         }
@@ -86,4 +128,4 @@ namespace worldmaker{
     };
 }
 
-#endif /* half_edge_pool_h */
+#endif /* iterable_object_pool_h */

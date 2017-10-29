@@ -14,26 +14,37 @@
 
 namespace worldmaker{
     
-    class VoronoiGraph;
     class Raster;
 
     class Continent{
-    private:
-    
-        typedef std::map<HalfEdge<>::Face, bool> Tiles;
-    
-        int numTiles;
-        VoronoiGraph graph;
-        Tiles tiles;
-    
     public:
-        Continent(int numTiles) : numTiles(numTiles), graph(numTiles){}
+        struct FaceData{
+            int distanceToSea;
+        };
+        
+        struct VertexData{
+            float z;
+            int flow;
+            void *down;
+            
+            VertexData() : flow(0){}
+        };
+        
+        typedef VoronoiGraph<FaceData, VertexData> Graph;
+        
+        Continent(int numTiles) : numTiles(numTiles), graph(numTiles, numTiles){}
         
         void generateTiles(int relaxations);
         
         void generateSeasAndLakes(float waterRatio);
         
         void draw(Raster &raster) const;
+        
+    private:
+        
+        int numTiles, maxHeight;
+        Graph graph;
+
 };
 }
 
