@@ -13,6 +13,8 @@
 #include "edge.h"
 #include <set>
 #include <map>
+#include "optional.h"
+#include "bounding_rectangle.h"
 
 namespace worldmaker{
     
@@ -23,16 +25,19 @@ namespace worldmaker{
     class HalfEdge
     {
     public:
+        template <class F, class V, class A>
+        friend class VertexMap;
+        
         typedef std::set<const HalfEdge*> Set;
         
-        class HalfEdgeIteratorBase{
-        protected:
-            const HalfEdge *first;
+        template<bool Const>
+        struct HalfEdgeIteratorBase{
+            typedef typename Optional<Const, const HalfEdge*, HalfEdge*>::value incremented_type;
+
+            incremented_type first;
             bool incremented;
             
-            HalfEdgeIteratorBase(const HalfEdge *first, bool incremented) : first(first), incremented(incremented){}
-            
-        public:
+            HalfEdgeIteratorBase(incremented_type first, bool incremented) : first(first), incremented(incremented){}
             
             bool operator==(const HalfEdgeIteratorBase &other) const{
                 return first == other.first && incremented == other.incremented;
@@ -41,38 +46,33 @@ namespace worldmaker{
             bool operator!=(const HalfEdgeIteratorBase &other) const{
                 return first && other.first && (first != other.first || incremented != other.incremented);
             }
-            
-            const HalfEdge *current() const{
-                return first;
-            }
         };
         
-        class VertexIteratorBase : public HalfEdgeIteratorBase{
-            protected:
-                VertexIteratorBase(const HalfEdge *first, bool incremented) : HalfEdgeIteratorBase(first, incremented){}
-            public:
-                const Vector2 &operator*(){
-                    return HalfEdgeIteratorBase::first->vector2;
-                }
-            
-                const Vector2 *operator->(){
-                    return &HalfEdgeIteratorBase::first->vector2;
-                }
-        };
-        
-        template<class Type, class IteratorType>
+        template<class Type, class IteratorType, class ConstIteratorType>
         class Iterable{
-        protected:
-            const Type *type;
-            
-            Iterable(const Type *type) : type(type){}
+        private:
+            Type type;
+
         public:
-            IteratorType begin() const{
+            typedef IteratorType iterator;
+            typedef ConstIteratorType const_iterator;
+            
+            Iterable(Type type) : type(type){}
+
+            IteratorType begin() {
                 return IteratorType(type, false);
             }
             
-            IteratorType end() const{
+            IteratorType end() {
                 return IteratorType(type, true);
+            }
+            
+            ConstIteratorType begin() const{
+                return ConstIteratorType(type, false);
+            }
+            
+            ConstIteratorType end() const{
+                return ConstIteratorType(type, true);
             }
         };
 
@@ -80,61 +80,41 @@ namespace worldmaker{
         public:
             friend class HalfEdge;
             
-            struct HalfEdgeIterator : public HalfEdgeIteratorBase{
-                HalfEdgeIterator(const HalfEdge *edge, bool incremented) : HalfEdgeIteratorBase(edge, incremented){}
+            template <class F, class V, class A>
+            friend class VertexMap;
+            
+            template<bool Const>
+            struct BaseHalfEdgeIterator : public HalfEdgeIteratorBase<Const>{
+                typedef typename Optional<Const, const HalfEdge*, HalfEdge*>::value pointer_type;
+                typedef typename Optional<Const, const HalfEdge&, HalfEdge&>::value reference_type;
                 
-                HalfEdgeIterator &operator++(){
-                    HalfEdgeIteratorBase::first = HalfEdgeIteratorBase::first->next;
-                    HalfEdgeIteratorBase::incremented = true;
+                BaseHalfEdgeIterator(typename HalfEdgeIteratorBase<Const>::incremented_type edge, bool incremented) : HalfEdgeIteratorBase<Const>(edge, incremented){}
+                
+                BaseHalfEdgeIterator &operator++(){
+                    HalfEdgeIteratorBase<Const>::first = HalfEdgeIteratorBase<Const>::first->next;
+                    HalfEdgeIteratorBase<Const>::incremented = true;
                     return *this;
                 }
                 
-                HalfEdgeIterator operator++(int){
-                    HalfEdgeIterator out(HalfEdgeIteratorBase::first, HalfEdgeIteratorBase::incremented);
-                    HalfEdgeIteratorBase::first = HalfEdgeIteratorBase::first->next;
-                    HalfEdgeIteratorBase::incremented = true;
+                BaseHalfEdgeIterator operator++(int){
+                    BaseHalfEdgeIterator out(HalfEdgeIteratorBase<Const>::first, HalfEdgeIteratorBase<Const>::incremented);
+                    HalfEdgeIteratorBase<Const>::first = HalfEdgeIteratorBase<Const>::first->next;
+                    HalfEdgeIteratorBase<Const>::incremented = true;
                     return out;
                 }
                 
-                const HalfEdge &operator*() const{
-                    return *HalfEdgeIteratorBase::first;
+                reference_type operator*() {
+                    return *HalfEdgeIteratorBase<Const>::first;
                 }
                 
-                const HalfEdge *operator->() const{
-                    return HalfEdgeIteratorBase::first;
+                pointer_type operator->() {
+                    return HalfEdgeIteratorBase<Const>::first;
                 }
             };
             
-            struct VertexIterator : public VertexIteratorBase{
-                VertexIterator(const HalfEdge *edge, bool incremented) : VertexIteratorBase(edge, incremented){}
-                
-                VertexIterator &operator++(){
-                    HalfEdgeIteratorBase::first = HalfEdgeIteratorBase::first->next;
-                    HalfEdgeIteratorBase::incremented = true;
-                    return *this;
-                }
-                
-                VertexIterator operator++(int){
-                    VertexIterator out(HalfEdgeIteratorBase::first, HalfEdgeIteratorBase::incremented);
-                    HalfEdgeIteratorBase::first = HalfEdgeIteratorBase::first->next;
-                    HalfEdgeIteratorBase::incremented = true;
-                    return out;
-                }
-            };
-            
-            class HalfEdgeIterable : public Iterable<HalfEdge, HalfEdgeIterator>{
-            private:
-                HalfEdgeIterable(const HalfEdge *edge) : Iterable<HalfEdge, HalfEdgeIterator>(edge){}
-            public:
-                friend class Face;
-            };
-            
-            class VertexIterable : public Iterable<HalfEdge, VertexIterator>{
-            private:
-                VertexIterable(const HalfEdge *edge) : Iterable<HalfEdge, VertexIterator>(edge){}
-            public:
-                friend class Face;
-            };
+            typedef BaseHalfEdgeIterator<false> HalfEdgeIterator;
+            typedef BaseHalfEdgeIterator<true> ConstHalfEdgeIterator;
+            typedef Iterable<typename HalfEdgeIterator::incremented_type, HalfEdgeIterator, ConstHalfEdgeIterator> HalfEdgeIterable;
             
         private:
             
@@ -149,12 +129,12 @@ namespace worldmaker{
             
             Face() : edge(nullptr){}
             
-            HalfEdgeIterable halfEdges() const{
+            const HalfEdgeIterable halfEdges() const{
                 return HalfEdgeIterable(edge);
             }
             
-            VertexIterable vertices() const{
-                return VertexIterable(edge);
+            HalfEdgeIterable halfEdges() {
+                return HalfEdgeIterable(edge);
             }
             
             FaceData &data(){
@@ -178,23 +158,36 @@ namespace worldmaker{
             }
             
             Vector2 calculateCentroid() const;
+            
+            bool contains(const Vector2 &vec) const;
         };
         
         class Vertex{
         private:
-            const HalfEdge *edge;
+            Vector2 mPosition;
+            HalfEdge *edge;
             VertexData mData;
             
         public:
+            template <class F, class V, class A>
+            friend class VertexMap;
             
-            Vertex (const HalfEdge *edge) : edge(edge){}
+            Vertex (const Vector2 &position, HalfEdge *edge) : mPosition(position), edge(edge){}
             
             Vertex () : edge(nullptr){}
             
             friend class HalfEdge;
             
             const Vector2 &position() const{
-                return edge->vector2;
+                return mPosition;
+            }
+            
+            Vector2 &position(){
+                return mPosition;
+            }
+            
+            bool operator < (const Vertex &other) const{
+                return mPosition < other.mPosition;
             }
             
             bool complete() const{
@@ -216,49 +209,55 @@ namespace worldmaker{
                 return mData;
             }
             
-            struct InboundHalfEdgeIterator : public HalfEdgeIteratorBase{
-                InboundHalfEdgeIterator(const HalfEdge *edge, bool incremented) : HalfEdgeIteratorBase(edge, incremented){}
+            template <bool Const>
+            struct BaseInboundHalfEdgeIterator : public HalfEdgeIteratorBase<Const>{
+                typedef typename Optional<Const, const HalfEdge &, HalfEdge &>::value reference_type;
+                typedef typename Optional<Const, const HalfEdge *, HalfEdge *>::value pointer_type;
                 
-                InboundHalfEdgeIterator &operator++(){
-                    if (HalfEdgeIteratorBase::first->pair){
-                        HalfEdgeIteratorBase::first = HalfEdgeIteratorBase::first->pair->next;
+                BaseInboundHalfEdgeIterator(typename HalfEdgeIteratorBase<Const>::incremented_type edge, bool incremented) : HalfEdgeIteratorBase<Const>(edge, incremented){}
+                
+                BaseInboundHalfEdgeIterator &operator++(){
+                    if (HalfEdgeIteratorBase<Const>::first->pair){
+                        HalfEdgeIteratorBase<Const>::first = HalfEdgeIteratorBase<Const>::first->pair->next;
                     }
                     else{
-                        HalfEdgeIteratorBase::first = nullptr;
+                        HalfEdgeIteratorBase<Const>::first = nullptr;
                     }
-                    HalfEdgeIteratorBase::incremented = true;
+                    HalfEdgeIteratorBase<Const>::incremented = true;
                     return *this;
                 }
                 
-                InboundHalfEdgeIterator operator++(int){
-                    InboundHalfEdgeIterator out(HalfEdgeIteratorBase::first, HalfEdgeIteratorBase::incremented);
+                BaseInboundHalfEdgeIterator operator++(int){
+                    BaseInboundHalfEdgeIterator out(HalfEdgeIteratorBase<Const>::first, HalfEdgeIteratorBase<Const>::incremented);
                     ++*this;
                     return out;
                 }
                 
-                const HalfEdge &operator*() const{
-                    return *HalfEdgeIteratorBase::first;
+                reference_type operator*() {
+                    return *HalfEdgeIteratorBase<Const>::first;
                 }
                 
-                const HalfEdge *operator->() const{
-                    return HalfEdgeIteratorBase::first;
+                pointer_type operator->() {
+                    return HalfEdgeIteratorBase<Const>::first;
                 }
+
             };
             
-            class InboundHalfEdgeIterable : public Iterable<HalfEdge, InboundHalfEdgeIterator>{
-            private:
-                InboundHalfEdgeIterable(const HalfEdge *edge) : Iterable<HalfEdge, InboundHalfEdgeIterator>(edge){}
-                
-            public:
-                friend class Vertex;
-            };
+            typedef BaseInboundHalfEdgeIterator<false> InboundHalfEdgeIterator;
+            typedef BaseInboundHalfEdgeIterator<true> ConstInboundHalfEdgeIterator;
             
-            InboundHalfEdgeIterable inbound() const{
+            typedef Iterable<typename InboundHalfEdgeIterator::incremented_type, InboundHalfEdgeIterator, ConstInboundHalfEdgeIterator> InboundHalfEdgeIterable;
+
+            
+            InboundHalfEdgeIterable inbound(){
+                return edge;
+            }
+            
+            const InboundHalfEdgeIterable inbound() const{
                 return edge;
             }
         };
         
-        Vector2 vector2;
         HalfEdge *pair, *next;
         Face *mFace;
         Vertex *mVertex;
@@ -266,7 +265,7 @@ namespace worldmaker{
         HalfEdge() : pair(nullptr), next(nullptr), mFace(nullptr), mVertex(nullptr){}
         
         bool operator == (const HalfEdge &other) const{
-            return vector2 == other.vector2 && pair == other.pair && next == other.next;
+            return mVertex == other.mVertex && pair == other.pair;
         }
         
         bool operator != (const HalfEdge &other) const{
@@ -274,19 +273,13 @@ namespace worldmaker{
         }
         
         bool operator < (const HalfEdge &other) const{
-            if (vector2 < other.vector2){
+            if (mVertex < other.mVertex){
                 return true;
             }
-            if (other.vector2 < vector2){
+            if (other.mVertex < mVertex){
                 return false;
             }
-            if (pair < other.pair){
-                return true;
-            }
-            if (other.pair < pair){
-                return false;
-            }
-            return next < other.next;
+            return other.pair < pair;
         }
         
         const Face &face() const {
@@ -306,7 +299,27 @@ namespace worldmaker{
         }
         
         Edge edge() const {
-            return next ? Edge(vector2, next->vector2) : Edge(vector2, vector2);
+            return next ? Edge(mVertex->position(), next->vertex().position()) : Edge(mVertex->position(), mVertex->position());
+        }
+        
+        template<class HalfEdgeAllocator>
+        void split(Vertex *vertex, HalfEdgeAllocator &allocator){
+            vertex->mPosition = mVertex->mPosition + ((next->mVertex->mPosition - mVertex->mPosition) * 0.5f);
+            HalfEdge *a = allocator.allocate();
+            vertex->edge = a;
+            a->mVertex = vertex;
+            a->next = next;
+            a->mFace = mFace;
+            next = a;
+            if (pair){
+                HalfEdge *b = allocator.allocate();
+                b->mVertex = vertex;
+                b->next = pair->next;
+                pair->next = b;
+                b->mFace = pair->mFace;
+                a->pair = b;
+                b->pair = a;
+            }
         }
         
         HalfEdge *findLast() const{
@@ -336,8 +349,8 @@ namespace worldmaker{
         }
         
         bool matches (const Edge &edge) const{
-            return pair && ((vector2 == edge.endA && pair->vector2 == edge.endB) ||
-            (vector2 == edge.endB && pair->vector2 == edge.endA));
+            return pair && ((mVertex->position() == edge.endA && pair->vertex().position() == edge.endB) ||
+            (mVertex->position() == edge.endB && pair->vertex().position() == edge.endA));
         }
         
         bool fullyConnected() const{
@@ -353,19 +366,19 @@ namespace worldmaker{
             return !pair;
         }
         
-        template <class Itr, class Allocator>
-        static HalfEdge *fromPolygon (Itr begin, Itr end, Allocator &allocator, HalfEdge::Face *face){
+        template <class Itr, class VertexMap, class Allocator>
+        static HalfEdge *fromPolygon (Itr begin, Itr end, VertexMap &vertexMap, Allocator &allocator, HalfEdge::Face *face){
             if (begin == end){
                 return nullptr;
             }
             HalfEdge *first = allocator.allocate();
             face->edge = first;
             first->mFace = face;
-            first->vector2 = *begin;
+            first->mVertex = vertexMap.get(*begin, first);
             HalfEdge *last = first;
             for (++begin; begin != end; ++begin){
                 last->next = allocator.allocate();
-                last->next->vector2 = *begin;
+                last->mVertex = vertexMap.get(*begin, last);
                 last->next->mFace = face;
                 last = last->next;
             }
@@ -373,20 +386,68 @@ namespace worldmaker{
             return first;
         }
         
-        template<class Itr>
-        static void Glue(Itr from, Itr to, HalfEdge::Vertex *vertex){
-            vertex->edge = from->second;
-            for (Itr i = from; i != to; ++i){
-                i->second->mVertex = vertex;
-                HalfEdge<FaceData, VertexData> *last = i->second->findLast();
+        
+        template <class IteratorType>
+        static IteratorType findHalfEdgeConnecting(IteratorType begin, IteratorType end, const Vertex &vertex){
+            const Vertex *ptr = &vertex;
+            while (begin != end){
+                if (&begin->vertex() == ptr || &begin->next->vertex() == ptr){
+                    return begin;
+                }
+                ++begin;
+            }
+            return end;
+        }
+    };
+    
+    template<class FaceData, class VertexData>
+    Vector2 HalfEdge<FaceData, VertexData>::Face::calculateCentroid() const{
+        Vector2 total(0.0f, 0.0f);
+        float count = 0.0f;
+        const HalfEdge *next = edge;
+        do {
+            total += next->vertex().position();
+            next = next->next;
+            count += 1.0f;
+        } while (next != edge);
+        return total / count;
+    }
+    
+    template <class EdgeAllocator, class VertexAllocator, class FaceAllocator>
+    class VertexMap{
+    private:
+        typedef typename EdgeAllocator::ObjectType HalfEdge;
+        typedef typename HalfEdge::Vertex Vertex;
+        typedef typename HalfEdge::Face Face;
+        typedef std::map<Vector2, Vertex *> Map;
+        typedef std::multimap<Vertex *, HalfEdge *> Fans;
+        
+        Map map;
+        EdgeAllocator *edgeAllocator;
+        VertexAllocator *vertexAllocator;
+        FaceAllocator *faceAllocator;
+        
+    public:
+        VertexMap(EdgeAllocator *edgeAllocator, VertexAllocator *vertexAllocator, FaceAllocator *faceAllocator) : edgeAllocator(edgeAllocator), vertexAllocator(vertexAllocator), faceAllocator(faceAllocator){}
+        
+        void set(const Vector2 &position, HalfEdge *halfEdge){
+            auto i = map.find(position);
+            if (i == map.end()){
+                i = map.insert(i, std::make_pair(position, vertexAllocator->allocate(/*position, halfEdge*/)));
+                i->second->mPosition = position;
+                i->second->edge = halfEdge;
+            }
+            halfEdge->mVertex = i->second;
+        }
+        
+        static void Glue(typename Fans::iterator from, typename Fans::iterator to){
+            for (auto i = from; i != to; ++i){
+                HalfEdge *last = i->second->findLast();
                 if (last->pair){
                     continue;
                 }
-                for (Itr j = from; j != to; ++j){
-                    if (j->second->next->vector2 == last->vector2){
-                        if (j->second->pair){
-                            continue;
-                        }
+                for (auto j = from; j != to; ++j){
+                    if ((!j->second->pair) && &j->second->next->vertex() == &last->vertex()){
                         j->second->pair = last;
                         last->pair = j->second;
                         break;
@@ -395,58 +456,41 @@ namespace worldmaker{
             }
         }
         
-        class Builder
-        {
-        private:
-            typedef std::multimap<Vector2, HalfEdge *> Fans;
-            
+        void bind(){
             Fans fans;
-         
-        public:
-            void add(HalfEdge *edge);
-            
-            template <class VertexAllocator>
-            void construct(VertexAllocator &allocator){
-                typename Fans::iterator start = fans.begin();
-                for (auto i = fans.begin(); i != fans.end(); ++i){
-                    if (start->first != i->first){
-                        Glue(start, i, allocator.allocate());
-                        start = i;
-                    }
-                }
-                Glue(start, fans.end(), allocator.allocate());
+            for (auto i = edgeAllocator->begin(); i != edgeAllocator->end(); ++i){
+                fans.insert(std::make_pair(&i->vertex(), &*i));
             }
-            
-            friend std::ostream &operator<<(std::ostream &out, const Builder &builder){
-                for (auto i : builder.fans){
-                    std::cout << i.first << std::endl;
+            typename Fans::iterator start = fans.begin();
+            for (auto i = fans.begin(); i != fans.end(); ++i){
+                if (start->first != i->first){
+                    Glue(start, i);
+                    start = i;
                 }
-                return out;
             }
-        };
+            Glue(start, fans.end());
+        }
+        
+        template <class Itr>
+        void addPolygon (Itr begin, Itr end){
+            if (begin == end){
+                return;
+            }
+            Face *face = faceAllocator->allocate();
+            HalfEdge *first = edgeAllocator->allocate();
+            face->edge = first;
+            first->mFace = face;
+            set(*begin, first);
+            HalfEdge *last = first;
+            for (++begin; begin != end; ++begin){
+                last->next = edgeAllocator->allocate();
+                set(*begin, last->next);
+                last->next->mFace = face;
+                last = last->next;
+            }
+            last->next = first;
+        }
     };
-    
-    template<class FaceData, class VertexData>
-    void HalfEdge<FaceData, VertexData>::Builder::add(HalfEdge *edge){
-        HalfEdge *next = edge;
-        do {
-            fans.insert(std::make_pair(next->vector2, next));
-            next = next->next;
-        } while (next != edge);
-    }
-    
-    template<class FaceData, class VertexData>
-    Vector2 HalfEdge<FaceData, VertexData>::Face::calculateCentroid() const{
-        Vector2 total(0.0f, 0.0f);
-        float count = 0.0f;
-        const HalfEdge *next = edge;
-        do {
-            total += next->vector2;
-            next = next->next;
-            count += 1.0f;
-        } while (next != edge);
-        return total / count;
-    }
 
 }
 

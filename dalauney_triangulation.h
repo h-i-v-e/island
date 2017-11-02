@@ -128,6 +128,7 @@ namespace worldmaker{
     
     template <class FaceData, class VertexData>
     DalauneyTriangulation<FaceData, VertexData>::DalauneyTriangulation(const std::vector<Vector2> &points){
+        typedef HalfEdge<FaceData, VertexData> HalfEdgeType;
         size_t expectedTriangles = points.size() << 1;
         mHalfEdges = new HalfEdges(expectedTriangles * 3);
         mFaces = new Faces(expectedTriangles);
@@ -160,14 +161,14 @@ namespace worldmaker{
             badTriangles.clear();
         }
         auto pair = rTree.all(searchBuffer);
-        HalfEdge<>::Builder builder;
+        VertexMap<HalfEdges, Vertices, Faces> builder(mHalfEdges, mVertices, mFaces);
         while (pair.first != pair.second){
             if (!OfSuperTriangle(super.triangle, pair.first->triangle)){
-                builder.add(HalfEdge<>::fromPolygon(pair.first->triangle.vertices, pair.first->triangle.vertices + 3, *mHalfEdges, mFaces->allocate()));
+                builder.addPolygon(pair.first->triangle.vertices, pair.first->triangle.vertices + 3);
             }
             ++pair.first;
         }
-        builder.construct(*mVertices);
+        builder.bind();
     }
 }
 

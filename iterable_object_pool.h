@@ -25,6 +25,8 @@ namespace worldmaker{
         PoolItem *lastAllocated;
         
     public:
+        typedef Type ObjectType;
+        
         IterableObjectPool(size_t allocationBlocks) : pool(allocationBlocks), lastAllocated(nullptr){}
 
         Type *allocate(){

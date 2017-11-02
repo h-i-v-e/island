@@ -19,18 +19,25 @@ namespace worldmaker{
     class Continent{
     public:
         struct FaceData{
-            int distanceToSea;
+            bool sea;
         };
+        
+        struct VertexData;
+        
+        typedef VoronoiGraph<FaceData, VertexData> Graph;
+        typedef typename Graph::HalfEdges::ObjectType HalfEdge;
+        typedef typename Graph::Vertices::ObjectType Vertex;
+        typedef typename Graph::Faces::ObjectType Face;
         
         struct VertexData{
             float z;
             int flow;
-            void *down;
+            Vertex *down;
             
             VertexData() : flow(0){}
         };
         
-        typedef VoronoiGraph<FaceData, VertexData> Graph;
+        typedef std::vector<HalfEdge *> HalfEdges;
         
         Continent(int numTiles) : numTiles(numTiles), graph(numTiles, numTiles){}
         
@@ -38,12 +45,17 @@ namespace worldmaker{
         
         void generateSeasAndLakes(float waterRatio);
         
+        void generateRivers(int flowThreshold, int tesselations);
+        
         void draw(Raster &raster) const;
         
     private:
         
+        void tesselate(HalfEdges &);
+        
         int numTiles, maxHeight;
         Graph graph;
+        HalfEdges rivers;
 
 };
 }

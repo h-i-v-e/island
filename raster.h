@@ -13,6 +13,7 @@
 #include "bounding_rectangle.h"
 #include <limits>
 #include <algorithm>
+#include "triangle.h"
 
 namespace worldmaker{
     
@@ -70,10 +71,10 @@ namespace worldmaker{
             out = std::numeric_limits<float>::min();
             int found = 0;
             while (begin != end){
-                Edge edge(begin->edge());
-                Vector2 direction(edge.direction());
-                float x = (((y * direction.x) - (edge.endA.y * direction.x))/ direction.y) + edge.endA.x;
-                if (Edge::between(edge.endA.x, edge.endB.x, x)){
+                //Edge edge(begin->edge());
+                Vector2 direction(begin->direction());
+                float x = (((y * direction.x) - (begin->endA.y * direction.x))/ direction.y) + begin->endA.x;
+                if (Edge::between(begin->endA.x, begin->endB.x, x)){
                     if (x < in){
                         in = x;
                     }
@@ -87,11 +88,16 @@ namespace worldmaker{
             return found >= 2;
         }
         
-        template <class Face>
+        /*template <class Face>
         void fill(const Face &face, uint32_t colour){
-            auto list = face.vertices();
+            //auto list = face.vertices();
             auto edges = face.halfEdges();
-            BoundingRectangle rect(list.begin(), list.end());
+            //BoundingRectangle rect(list.begin(), list.end());
+            BoundingRectangle rect;
+            rect.clear();
+            for (auto i = face.halfEdges().begin(); i != face.halfEdges().end(); ++i){
+                rect.add(i->vertex().position());
+            }
             int h = height(), w = width();
             float stepSize = 1.0f / static_cast<float>(h);
             for (int y = (rect.topLeft.y * h), yend = (rect.bottomRight.y * h); y <= yend; ++y){
@@ -106,9 +112,57 @@ namespace worldmaker{
                     }
                 }
             }
-        }
+        }*/
                 
         void draw(const Edge &edge, uint32_t colour, int thickness = 1);
+        
+        static float computeZ(const Vector2 &pos, const Vector3 &a, const Vector3 &b, const Vector3 &c){
+            float aDist = (Vector2(a.x, a.y) - pos).magnitude();
+            float bDist = (Vector2(b.x, b.y) - pos).magnitude();
+            float cDist = (Vector2(c.x, c.y) - pos).magnitude();
+            float total = aDist + bDist + cDist;
+            aDist = total - aDist;
+            bDist = total - bDist;
+            cDist = total - cDist;
+            return ((aDist * a.z) + (bDist * b.z) + (cDist * c.z)) / (aDist + bDist + cDist);
+        }
+        
+        template <class ColourFunc>
+        void fillTriangle(const Vector3 &a, const Vector3 &b, const Vector3 &c, ColourFunc &colourFunc){
+            Triangle triangle(Vector2(a.x, a.y), Vector2(b.x, b.y), Vector2(c.x, c.y));
+            BoundingRectangle rect(triangle.boundingRectangle());
+            int h = height(), w = width();
+            float stepSize = 1.0f / static_cast<float>(h);
+            for (int y = (rect.topLeft.y * h), yend = (rect.bottomRight.y * h); y <= yend; ++y){
+                if (y < 0 || y >= h){
+                    continue;
+                }
+                float fy = static_cast<float>(y) * stepSize;
+                float in, out;
+                Edge edges[3];
+                triangle.getEdges(edges);
+                if (scanBounds(edges, edges + 3, fy, in, out)){
+                    float inZ = computeZ(Vector2(in, fy), a, b, c);
+                    float outZ = computeZ(Vector2(out, fy), a, b, c);
+                    int x = in * w, xend = out * w;
+                    float zStep = (outZ - inZ) / (xend - x);
+                    float xStep = (out - in) / (xend - x);
+                    while (x < 0){
+                        inZ += zStep;
+                        in += xStep;
+                        ++x;
+                    }
+                    xend = std::min(xend, w - 1);
+                    while (x <= xend){
+                        operator()(x, y) = colourFunc(in, fy, inZ);
+                        inZ += zStep;
+                        in += xStep;
+                        ++x;
+                    }
+                }
+            }
+
+        }
     };
 }
 

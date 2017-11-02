@@ -29,26 +29,31 @@ namespace worldmaker{
         void generate(const Itr &begin, const Itr &end){
             mHalfEdges.drain();
             mFaces.drain();
+            mVertices.drain();
             std::set<Vector2> visited;
             std::vector<Vector2> vertexBuffer;
-            typename HalfEdgeType::Builder builder;
+            VertexMap<HalfEdges, Vertices, Faces> builder(&mHalfEdges, &mVertices, &mFaces);
             for (Itr i = begin; i != end; ++i){
-                if (visited.find(i->vector2) != visited.end()){
+                if (visited.find(i->vertex().position()) != visited.end()){
                     continue;
                 }
-                visited.insert(i->vector2);
+                visited.insert(i->vertex().position());
                 if (i->fullyConnected()){
                     vertexBuffer.clear();
                     for (auto &j : i->vertex().inbound()){
                         vertexBuffer.push_back(GetCircumcircleCentre(j));
                     }
-                    builder.add(HalfEdgeType::fromPolygon(vertexBuffer.begin(), vertexBuffer.end(), mHalfEdges, mFaces.allocate()));
+                    builder.addPolygon(vertexBuffer.begin(), vertexBuffer.end());
                 }
             }
-            builder.construct(mVertices);
+            builder.bind();
         }
         
         const HalfEdges &halfEdges() const{
+            return mHalfEdges;
+        }
+        
+        HalfEdges &halfEdges(){
             return mHalfEdges;
         }
         
@@ -76,7 +81,7 @@ namespace worldmaker{
         template <class TriangulationHalfEdge>
         static Vector2 GetCircumcircleCentre(const TriangulationHalfEdge &edge){
             const TriangulationHalfEdge *next = edge.next;
-            return Triangle(edge.vector2, next->vector2, next->next->vector2).findCircumcircleCentre();
+            return Triangle(edge.vertex().position(), next->vertex().position(), next->next->vertex().position()).findCircumcircleCentre();
         }
     };
 }

@@ -58,6 +58,8 @@ namespace worldmaker{
 
         
     public:
+        typedef ObjectType Type;
+        
         ObjectPool(size_t blockSize) : blockSize(blockSize), firstBlock(new AllocationBlock(blockSize)){
             nextFree = firstBlock->items;
         }

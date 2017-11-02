@@ -87,7 +87,7 @@ void DrawPerimeter(const HalfEdge<> *h, Raster &raster){
 }
 
 TEST_CASE("Continent", "Continent"){
-    Continent continent(8000);
+    Continent continent(2048);
     continent.generateTiles(3);
     continent.generateSeasAndLakes(0.5f);
     Raster raster(1024, 1024);
