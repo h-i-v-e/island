@@ -23,16 +23,18 @@ namespace worldmaker{
         ObjectPool<PoolItem> pool;
         
         PoolItem *lastAllocated;
+        size_t items;
         
     public:
         typedef Type ObjectType;
         
-        IterableObjectPool(size_t allocationBlocks) : pool(allocationBlocks), lastAllocated(nullptr){}
+        IterableObjectPool(size_t allocationBlocks) : pool(allocationBlocks), lastAllocated(nullptr), items(0){}
 
         Type *allocate(){
             PoolItem *item = pool.allocate();
             item->previousAllocated = lastAllocated;
             lastAllocated = item;
+            ++items;
             return &item->type;
         }
         
@@ -42,6 +44,7 @@ namespace worldmaker{
                 pool.release(lastAllocated);
                 lastAllocated = next;
             }
+            items = 0;
         }
         
         class iterator{
@@ -126,6 +129,10 @@ namespace worldmaker{
         
         const_iterator end() const{
             return nullptr;
+        }
+        
+        size_t size() const{
+            return items;
         }
     };
 }

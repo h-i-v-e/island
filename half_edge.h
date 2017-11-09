@@ -153,6 +153,15 @@ namespace worldmaker{
                 return edge;
             }
             
+            BoundingRectangle bounds() const{
+                BoundingRectangle bounds;
+                bounds.clear();
+                for (auto i = halfEdges().begin(); i != halfEdges().end(); ++i){
+                    bounds.add(i->vertex().position());
+                }
+                return bounds;
+            }
+            
             bool operator < (const Face &face) const{
                 return edge < face.edge;
             }
@@ -255,6 +264,14 @@ namespace worldmaker{
             
             const InboundHalfEdgeIterable inbound() const{
                 return edge;
+            }
+            
+            HalfEdge &halfEdge(){
+                return *edge;
+            }
+            
+            const HalfEdge &halfEdge() const{
+                return *edge;
             }
         };
         
@@ -492,6 +509,16 @@ namespace worldmaker{
         }
     };
 
+    template<class FaceData, class VertexData>
+    bool HalfEdge<FaceData, VertexData>::Face::contains(const Vector2 &vec) const{
+        Edge ray(bounds().externalPoint(), calculateCentroid());
+        for (auto i = halfEdges().begin(); i != halfEdges().end(); ++i){
+            if (ray.intersects(i->edge())){
+                return true;
+            }
+        }
+        return false;
+    }
 }
 
 #endif /* half_edge_h */

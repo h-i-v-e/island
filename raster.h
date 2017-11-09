@@ -14,6 +14,8 @@
 #include <limits>
 #include <algorithm>
 #include "triangle.h"
+#include "spline.h"
+#include "triangle3.h"
 
 namespace worldmaker{
     
@@ -65,27 +67,85 @@ namespace worldmaker{
             }
         }
         
+        static float getZMul(const Spline &intersected, float x){
+            return (((x - intersected.endA.x) / (intersected.endB.x - intersected.endA.x)) * (intersected.endB.z - intersected.endA.z)) + intersected.endA.z;
+        }
+        
+        struct Vector3WithNormal : public Vector3{
+            Vector3 normal;
+            
+            Vector3WithNormal(){}
+            
+            Vector3WithNormal(const Vector3 &vect, const Vector3 &normal) : Vector3(vect), normal(normal){}
+            
+            Vector3WithNormal operator-(const Vector3WithNormal &other) const{
+                return Vector3WithNormal(Vector3::operator-(other), normal - other.normal);
+            }
+            
+            Vector3WithNormal operator/(float f) const{
+                return Vector3WithNormal(Vector3::operator/(f), normal / f);
+            }
+            
+            Vector3WithNormal &operator += (const Vector3WithNormal &other){
+                Vector3::operator+=(other);
+                normal += other.normal;
+                return *this;
+            }
+            
+            static Vector3WithNormal zero(){
+                return  Vector3WithNormal(Vector3::zero(), Vector3::zero());
+            }
+        };
+        
+        struct SplineWithNormals{
+            Vector3WithNormal endA, endB;
+            
+            SplineWithNormals(){}
+            
+            SplineWithNormals(Vector3WithNormal endA, Vector3WithNormal endB) : endA(endA), endB(endB){}
+            
+            Edge edge() const{
+                return Edge(endA.x, endA.y, endB.x, endB.y);
+            }
+        };
+        
+        static float getHitRatio(const SplineWithNormals &intersected, float x){
+            return ((x - intersected.endA.x) / (intersected.endB.x - intersected.endA.x));
+        }
+        
+        static void getSplineDelta(const SplineWithNormals &intersected, float x, Vector3WithNormal &output){
+            float hit = getHitRatio(intersected, x);
+            output.x = x;
+            output.z = intersected.endA.z + ((intersected.endB.z - intersected.endA.z) * hit);
+            output.normal = (intersected.endA.normal + ((intersected.endB.normal - intersected.endA.normal) * hit)).normalized();
+        }
+        
         template <class Itr>
-        static bool scanBounds(Itr begin, Itr end, float y, float &in, float &out){
-            in = std::numeric_limits<float>::max();
-            out = std::numeric_limits<float>::min();
+        static bool scanBounds(Itr begin, Itr end, float y, Vector3WithNormal &in, Vector3WithNormal &out){
+            in.x = std::numeric_limits<float>::max();
+            out.x = std::numeric_limits<float>::min();
             int found = 0;
             while (begin != end){
                 //Edge edge(begin->edge());
-                Vector2 direction(begin->direction());
-                float x = (((y * direction.x) - (begin->endA.y * direction.x))/ direction.y) + begin->endA.x;
+                Vector2 direction(begin->edge().direction());
+                float x = direction.y != 0.0f ? (((y * direction.x) - (begin->endA.y * direction.x))/ direction.y) + begin->endA.x : begin->endA.x;
                 if (Edge::between(begin->endA.x, begin->endB.x, x)){
-                    if (x < in){
-                        in = x;
+                    Vector3WithNormal v3;
+                    getSplineDelta(*begin, x, v3);
+                    if (x < in.x){
+                        in = v3;
                     }
-                    if (x > out){
-                        out = x;
+                    if (x > out.x){
+                        out = v3;
                     }
                     ++found;
                 }
+                if (found == 2){
+                    return true;
+                }
                 ++begin;
             }
-            return found >= 2;
+            return found >= 1;
         }
         
         /*template <class Face>
@@ -116,18 +176,7 @@ namespace worldmaker{
                 
         void draw(const Edge &edge, uint32_t colour, int thickness = 1);
         
-        static float computeZ(const Vector2 &pos, const Vector3 &a, const Vector3 &b, const Vector3 &c){
-            float aDist = (Vector2(a.x, a.y) - pos).magnitude();
-            float bDist = (Vector2(b.x, b.y) - pos).magnitude();
-            float cDist = (Vector2(c.x, c.y) - pos).magnitude();
-            float total = aDist + bDist + cDist;
-            aDist = total - aDist;
-            bDist = total - bDist;
-            cDist = total - cDist;
-            return ((aDist * a.z) + (bDist * b.z) + (cDist * c.z)) / (aDist + bDist + cDist);
-        }
-        
-        template <class ColourFunc>
+        /*template <class ColourFunc>
         void fillTriangle(const Vector3 &a, const Vector3 &b, const Vector3 &c, ColourFunc &colourFunc){
             Triangle triangle(Vector2(a.x, a.y), Vector2(b.x, b.y), Vector2(c.x, c.y));
             BoundingRectangle rect(triangle.boundingRectangle());
@@ -138,30 +187,80 @@ namespace worldmaker{
                     continue;
                 }
                 float fy = static_cast<float>(y) * stepSize;
-                float in, out;
-                Edge edges[3];
-                triangle.getEdges(edges);
-                if (scanBounds(edges, edges + 3, fy, in, out)){
-                    float inZ = computeZ(Vector2(in, fy), a, b, c);
-                    float outZ = computeZ(Vector2(out, fy), a, b, c);
-                    int x = in * w, xend = out * w;
-                    float zStep = (outZ - inZ) / (xend - x);
-                    float xStep = (out - in) / (xend - x);
+                Spline splines[3];
+                splines[0].endA = a;
+                splines[0].endB = b;
+                splines[1].endA = b;
+                splines[1].endB = c;
+                splines[2].endA = c;
+                splines[2].endB = a;
+                Vector3 in, out;
+                if (scanBounds(splines, splines + 3, fy, in, out)){
+                    int x = in.x * w, xend = out.x * w;
+                    float zStep = (out.z - in.z) / (xend - x);
+                    float xStep = (out.x - in.x) / (xend - x);
                     while (x < 0){
-                        inZ += zStep;
-                        in += xStep;
+                        in.z += zStep;
+                        in.x += xStep;
                         ++x;
                     }
                     xend = std::min(xend, w - 1);
                     while (x <= xend){
-                        operator()(x, y) = colourFunc(in, fy, inZ);
-                        inZ += zStep;
-                        in += xStep;
+                        operator()(x, y) = colourFunc(in.x, fy, in.z);
+                        in.z += zStep;
+                        in.x += xStep;
                         ++x;
                     }
                 }
             }
-
+        }*/
+        
+        template <class ColourFunc>
+        void fillTriangle(const Triangle3WithNormals &tri, ColourFunc &colourFunc){
+            float minY = std::numeric_limits<float>::max(), maxY = std::numeric_limits<float>::min();
+            Vector3WithNormal v3[3];
+            for (int i = 0; i != 3; ++i){
+                v3[i] = Vector3WithNormal(tri.vertices[i], tri.normals[i]);
+                float y = tri.vertices[i].y;
+                if (y < minY){
+                    minY = y;
+                }
+                if (y > maxY){
+                    maxY = y;
+                }
+            }
+            int h = height(), w = width();
+            float stepSize = 1.0f / static_cast<float>(h);
+            for (int y = minY * h, yend = maxY * h; y <= yend; ++y){
+                if (y < 0 || y >= h){
+                    continue;
+                }
+                float fy = static_cast<float>(y) * stepSize;
+                SplineWithNormals splines[3];
+                splines[0].endA = v3[0];
+                splines[0].endB = v3[1];
+                splines[1].endA = v3[1];
+                splines[1].endB = v3[2];
+                splines[2].endA = v3[2];
+                splines[2].endB = v3[0];
+                Vector3WithNormal in, out;
+                if (scanBounds(splines, splines + 3, fy, in, out)){
+                    int x = in.x * w, xend = out.x * w;
+                    float denom = xend - x;
+                    Vector3WithNormal step(denom == 0.0f ? Vector3WithNormal::zero() : ((out - in) / denom));
+                    while (x < 0){
+                        in += step;
+                        ++x;
+                    }
+                    xend = std::min(xend, w - 1);
+                    while (x <= xend){
+                        in.y = y * stepSize;
+                        operator()(x, y) = colourFunc(x, y, in);
+                        in += step;
+                        ++x;
+                    }
+                }
+            }
         }
     };
 }

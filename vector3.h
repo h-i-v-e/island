@@ -9,6 +9,8 @@
 #ifndef vector3_h
 #define vector3_h
 
+#include <cmath>
+
 namespace worldmaker{
     struct Vector3{
         Vector3(float x, float y, float z) : x(x), y(y), z(z){}
@@ -19,6 +21,36 @@ namespace worldmaker{
         
         Vector3 operator-(const Vector3 &other) const{
             return Vector3(x - other.x, y - other.y, z - other.z);
+        }
+        
+        Vector3 &operator-=(const Vector3 &other) {
+            x -= other.x;
+            y -= other.y;
+            z -= other.z;
+            return *this;
+        }
+        
+        Vector3 operator+(const Vector3 &other) const{
+            return Vector3(x + other.x, y + other.y, z + other.z);
+        }
+        
+        Vector3 operator/(float f) const{
+            return Vector3(x / f, y / f, z / f);
+        }
+        
+        Vector3 &operator+=(const Vector3 &other){
+            x += other.x;
+            y += other.y;
+            z += other.z;
+            return *this;
+        }
+        
+        Vector3 cross(const Vector3 &other) const{
+            return Vector3((y * other.z) - (z * other.y), (z * other.x) - (x * other.z), (x * other.y) - (other.x * y));
+        }
+        
+        float dot(const Vector3 &other) const{
+            return x * other.x + y * other.y + z * other.z;
         }
         
         float squareMagnitude() const{
@@ -32,6 +64,29 @@ namespace worldmaker{
         Vector3 normalized() const{
             float mag = magnitude();
             return Vector3(x / mag, y / mag, z / mag);
+        }
+        
+        Vector3 operator * (float f) const{
+            return Vector3(x * f, y * f, z * f);
+        }
+        
+        Vector3 &operator *= (float f) {
+            x *= x;
+            y *= y;
+            z *= z;
+            return *this;
+        }
+        
+        Vector3 &normalize(){
+            float mag = magnitude();
+            x /= mag;
+            y /= mag;
+            z /= mag;
+            return *this;
+        }
+        
+        static Vector3 zero(){
+            return Vector3(0.0f, 0.0f, 0.0f);
         }
     };
 }

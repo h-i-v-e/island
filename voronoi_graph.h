@@ -18,12 +18,16 @@ namespace worldmaker{
     template <class FaceData = EmptyData, class VertexData = EmptyData>
     class VoronoiGraph{
     public:
-        typedef HalfEdge<FaceData, VertexData> HalfEdgeType;
-        typedef IterableObjectPool<HalfEdgeType> HalfEdges;
-        typedef IterableObjectPool<typename HalfEdgeType::Face> Faces;
-        typedef IterableObjectPool<typename HalfEdgeType::Vertex> Vertices;
         
-        VoronoiGraph(size_t numVertices, size_t numFaces) : mHalfEdges(numVertices), mFaces(numFaces), mVertices(numVertices) {}
+        typedef HalfEdge<FaceData, VertexData> HalfEdge;
+        typedef typename HalfEdge::Face Face;
+        typedef typename HalfEdge::Vertex Vertex;
+        
+        typedef IterableObjectPool<HalfEdge> HalfEdges;
+        typedef IterableObjectPool<Face> Faces;
+        typedef IterableObjectPool<Vertex> Vertices;
+        
+        VoronoiGraph(size_t numVertices, size_t numFaces) : mHalfEdges(numVertices), mFaces(numFaces), mVertices(numVertices){}
         
         template <class Itr>
         void generate(const Itr &begin, const Itr &end){

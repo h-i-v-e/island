@@ -19,6 +19,9 @@ namespace worldmaker{
         
         Edge(Vector2 endA, Vector2 endB) : endA(endA), endB(endB){}
         
+        Edge(float ax, float ay, float bx, float by) : endA(ax, ay), endB(bx, by) {}
+
+        
         Edge &operator()(const Vector2 &endA, const Vector2 &endB){
             this->endA = endA;
             this->endB = endB;
@@ -41,6 +44,10 @@ namespace worldmaker{
         
         Vector2 direction() const{
             return endB - endA;
+        }
+        
+        float length() const{
+            return direction().magnitude();
         }
         
         Vector2 normal() const{

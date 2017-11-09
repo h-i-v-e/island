@@ -25,21 +25,22 @@ namespace worldmaker{
         struct VertexData;
         
         typedef VoronoiGraph<FaceData, VertexData> Graph;
-        typedef typename Graph::HalfEdges::ObjectType HalfEdge;
-        typedef typename Graph::Vertices::ObjectType Vertex;
-        typedef typename Graph::Faces::ObjectType Face;
+        typedef typename Graph::HalfEdge HalfEdge;
+        typedef typename Graph::Vertex Vertex;
+        typedef typename Graph::Face Face;
+        typedef std::vector<HalfEdge *> HalfEdges;
+        typedef std::vector<HalfEdges> Coastlines;
         
         struct VertexData{
+            Vector3 normal;
             float z;
-            int flow;
+            int flow, seaDistance, landDistance;
             Vertex *down;
             
-            VertexData() : flow(0){}
+            VertexData() : flow(0), down(nullptr), z(0.0f){}
         };
         
-        typedef std::vector<HalfEdge *> HalfEdges;
-        
-        Continent(int numTiles) : numTiles(numTiles), graph(numTiles, numTiles){}
+        Continent(int numTiles, float maxZ) : numTiles(numTiles), graph(numTiles, numTiles), maxZ(maxZ){}
         
         void generateTiles(int relaxations);
         
@@ -47,15 +48,23 @@ namespace worldmaker{
         
         void generateRivers(int flowThreshold, int tesselations);
         
-        void draw(Raster &raster) const;
+        void draw(Raster &raster);
+        
+        const Coastlines &coastlines() const{
+            return mCoastlines;
+        }
         
     private:
         
         void tesselate(HalfEdges &);
         
+        void computeNormals();
+        
+        float maxZ;
         int numTiles, maxHeight;
         Graph graph;
         HalfEdges rivers;
+        Coastlines mCoastlines;
 
 };
 }
