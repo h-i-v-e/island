@@ -157,7 +157,7 @@ namespace{
             return sea;
         }
         
-        int &target(Continent::VertexData &data) const{
+        float &target(Continent::VertexData &data) const{
             return data.seaDistance;
         }
     };
@@ -167,13 +167,13 @@ namespace{
             return !sea;
         }
         
-        int &target(Continent::VertexData &data) const{
+        float &target(Continent::VertexData &data) const{
             return data.landDistance;
         }
     };
     
     template <class DistanceTo>
-    int ComputeDistanceTo(Continent::Graph &graph, DistanceTo dt){
+    float ComputeDistanceTo(Continent::Graph &graph, DistanceTo dt){
         typedef Continent::Vertex Vertex;
         typedef std::stack<Vertex> Stack;
         
@@ -183,7 +183,7 @@ namespace{
 
         //int lin = 0;
         //FibonachiSequence fib;
-        int distance = 0;
+        float distance = 0.0f, add = 0.5f, addMul = 1.05f;
         for (auto i = graph.vertices().begin(); i != graph.vertices().end(); ++i){
             dt.target(i->data()) = numeric_limits<int>::max();
             for (auto j : i->inbound()){
@@ -198,7 +198,8 @@ namespace{
             //++lin;
             //++fib;
             //int distance = (fib + (lin * 15)) >> 4;
-            ++distance;
+            add *= addMul;
+            distance += add;
             while (!last->empty()){
                 Vertex vertex(last->top());
                 last->pop();
@@ -544,10 +545,10 @@ void Continent::generateSeasAndLakes(float waterRatio){
     maxHeight = ComputeDistanceTo(graph, DistanceToSea());
     ComputeDistanceTo(graph, DistanceToLand());
     setZValues(graph, maxHeight, maxZ);
-    setDown(graph);
-    calculateFlow(graph);
-    generateRivers(6, 1);
-    computeNormals();
+    //setDown(graph);
+    //calculateFlow(graph);
+    //generateRivers(6, 1);
+    //computeNormals();
 }
 
 void Continent::draw(Raster &raster){
@@ -576,14 +577,24 @@ void Continent::draw(Raster &raster){
             uint32_t nInt = std::max<int>(std::min<int>(sun.dot(normal * -1.0f) * 255, 255), 0);
             if (z < 0.0f){
                 float blend = std::max(1.0f + (z * 20.0f), 0.0f) * 0.75f;
-                uint32_t others = nInt * blend;
-                raster(x, y) = others | (others << 8) | 0x00ff0000;
+                uint32_t red = (nInt >> 1) * blend;
+                uint32_t green = (static_cast<uint32_t>(nInt * blend) + 0x99) >> 1;
+                raster(x, y) = red | (green << 8) | 0x00990000;
             }
             else{
-                raster(x, y) = nInt | (nInt << 8) | (nInt << 16);
+                uint32_t zInt = std::min<int>(z * 255, 255);
+                uint32_t red = std::min<uint32_t>((zInt + nInt) >> 1, 255);
+                uint32_t green = std::min<uint32_t>((0x99 + nInt) >> 1, 255);
+                uint32_t blue = std::min<uint32_t>(((zInt >> 1) + nInt) >> 1, 255);
+                raster(x, y) = red | (green << 8) | (blue << 16);
             }
         }
     }
+    /*ErosianMap::Rivers rivers;
+    erosian.erosian.trackRivers(rivers, 1024);
+    for (auto i = rivers.begin(); i != rivers.end(); ++i){
+        raster(i->first, i->second) = 0x00ff0000;
+    }*/
     /*for (auto i = ret.halfEdges().begin(); i != ret.halfEdges().end(); ++i){
         raster.draw(i->edge(), 0xffffffff);
     }*/
@@ -631,7 +642,7 @@ void Continent::draw(Raster &raster){
     /*for (auto i = riverFaces.begin(); i != riverFaces.end(); ++i){
         raster.fill(**i, 0xffffffff);
     }*/
-    /*for (auto i = rivers.begin(); i != rivers.end(); ++i){
+    for (auto i = rivers.begin(); i != rivers.end(); ++i){
         raster.draw((*i)->edge(), 0x00ff9999);
-    }*/
+    }
 }

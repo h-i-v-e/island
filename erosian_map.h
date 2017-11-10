@@ -11,6 +11,7 @@
 
 #include "grid.h"
 #include "vector3.h"
+#include <vector>
 
 namespace worldmaker{
     class ErosianMap : public Grid<Vector3>{
@@ -22,6 +23,10 @@ namespace worldmaker{
         void smooth();
         
         void calculateNormals(Grid<Vector3> &grid) const;
+        
+        typedef std::vector<std::pair<int, int>> Rivers;
+        
+        void trackRivers(Rivers &rivers, int threshold) const;
         
         constexpr float maxCarry() const{
             return mMaxCarry;

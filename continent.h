@@ -33,8 +33,8 @@ namespace worldmaker{
         
         struct VertexData{
             Vector3 normal;
-            float z;
-            int flow, seaDistance, landDistance;
+            float z, seaDistance, landDistance;
+            int flow;
             Vertex *down;
             
             VertexData() : flow(0), down(nullptr), z(0.0f){}

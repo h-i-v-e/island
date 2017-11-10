@@ -13,7 +13,6 @@
 using namespace worldmaker;
 
 namespace{
-    int count = 0;
     
     void traceDrop(ErosianMap &em, int x, int y){
         float carrying = 0.0f, velocity = 0.0f;
@@ -73,17 +72,11 @@ namespace{
                 else{
                     last->z += add;
                 }
-                //std::cout << "After " << last->z << std::endl;
                 x = nextX;
                 y = nextY;
             }
             else{
-                //std::cout << "------- " << carrying << std::endl;
-                /*if (++count == 100){
-                    exit(0);
-                }*/
                 last->z += carrying;
-                
                 return;
             }
         }
@@ -128,6 +121,14 @@ namespace{
         b = em(xEnd, yEnd - 1) - em(xEnd - 1, yEnd);
         firstPass(xEnd, yEnd) = a.cross(b);
     }
+    
+    struct DownTracker{
+        int x, y, flow;
+        
+        DownTracker() : x(-1), y(-1), flow(0){}
+    };
+    
+    typedef Grid<DownTracker> FlowGrid;
 }
 
 void ErosianMap::erode(int iterations, int seed){
@@ -189,5 +190,46 @@ void ErosianMap::calculateNormals(Grid<Vector3> &grid) const{
     }
     for (int x = 0; x <= xEnd; ++x){
         grid(x, yEnd) = firstPass(x, yEnd).normalized();
+    }
+}
+
+void ErosianMap::trackRivers(Rivers &rivers, int threshold) const{
+    FlowGrid down(mWidth, mHeight);
+    int yEnd = mHeight - 1, xEnd = mWidth - 1;
+    for (int y = 1; y != yEnd; ++y){
+        for (int x = 1; x != xEnd; ++x){
+            DownTracker *chosen = &down(x, y);
+            const Vector3 *cur = &operator()(x, y);
+            if (cur->z < 0.0f || cur->x == 0.0f || cur->y == 0.0f){
+                continue;
+            }
+            float lowest = 0.0f;
+            for (int iy = y - 1, jy = y + 1; iy <= jy; iy += 2){
+                for (int ix = x - 1, jx = x + 1; ix <= jx; ix += 2){
+                    const Vector3 *next = &operator()(ix, iy);
+                    if (cur->z <= next->z){
+                        continue;
+                    }
+                    float z = (*next - *cur).normalized().z;
+                    if (z < lowest){
+                        lowest = z;
+                        chosen->x = ix;
+                        chosen->y = iy;
+                    }
+                }
+            }
+        }
+    }
+    for (int y = 1; y != yEnd; ++y){
+        for (int x = 1; x != xEnd; ++x){
+            for (DownTracker *chosen = &down(x, y); chosen->x != -1; chosen = &down(chosen->x, chosen->y)){
+                ++chosen->flow;
+            }
+        }
+    }
+    for (const DownTracker *i = down.data(), *j = down.data() + (mWidth * mHeight); i != j; ++i){
+        if (i->flow >= threshold){
+            rivers.emplace_back(i->x, i->y);
+        }
     }
 }

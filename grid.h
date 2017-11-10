@@ -38,7 +38,7 @@ namespace worldmaker{
             return mData[(y * mWidth) + x];
         }
         
-        constexpr ValueType operator()(int x, int y) const{
+        constexpr ValueType &operator()(int x, int y) const{
             return mData[(y * mWidth) + x];
         }
         
