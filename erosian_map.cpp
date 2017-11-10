@@ -15,6 +15,8 @@ using namespace worldmaker;
 namespace{
     
     void traceDrop(ErosianMap &em, int x, int y){
+        static float diagonalWeight = 1.0f / sqrtf(2.0f);
+        static float halfDiagonalWeight = diagonalWeight * 0.5f;
         float carrying = 0.0f, velocity = 0.0f;
         Vector3 *last = &em(x, y);
         if (last->z <= 0.0f){
@@ -46,8 +48,10 @@ namespace{
                         continue;
                     }
                     Vector3 dir(*cur - *last);
-                    dir.normalize();
                     float z = dir.z;
+                    if (i != x && yb != y){
+                        z *= diagonalWeight;
+                    }
                     if (z < minZ){
                         nextX = i;
                         nextY = yb;
@@ -64,8 +68,8 @@ namespace{
                 carrying = canCarry;
                 velocity = newVelocity;
                 if (nextX != x && nextY != y){
-                    float lesser = add * 0.125f;
-                    last->z += add * 0.75f;
+                    float lesser = add * halfDiagonalWeight;
+                    last->z += add * diagonalWeight;
                     em(nextX, y).z += lesser;
                     em(x, nextY).z += lesser;
                 }
@@ -194,6 +198,7 @@ void ErosianMap::calculateNormals(Grid<Vector3> &grid) const{
 }
 
 void ErosianMap::trackRivers(Rivers &rivers, int threshold) const{
+    static float diagonalWeight = 1.0f / sqrtf(2.0f);
     FlowGrid down(mWidth, mHeight);
     int yEnd = mHeight - 1, xEnd = mWidth - 1;
     for (int y = 1; y != yEnd; ++y){
@@ -204,13 +209,19 @@ void ErosianMap::trackRivers(Rivers &rivers, int threshold) const{
                 continue;
             }
             float lowest = 0.0f;
-            for (int iy = y - 1, jy = y + 1; iy <= jy; iy += 2){
-                for (int ix = x - 1, jx = x + 1; ix <= jx; ix += 2){
+            for (int iy = y - 1, jy = y + 1; iy <= jy; ++iy){
+                for (int ix = x - 1, jx = x + 1; ix <= jx; ++ix){
+                    if (iy == y && ix == x){
+                        continue;
+                    }
                     const Vector3 *next = &operator()(ix, iy);
                     if (cur->z <= next->z){
                         continue;
                     }
-                    float z = (*next - *cur).normalized().z;
+                    float z = (*next - *cur).z;
+                    if (ix != x && iy != y){
+                        z *= diagonalWeight;
+                    }
                     if (z < lowest){
                         lowest = z;
                         chosen->x = ix;

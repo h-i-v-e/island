@@ -555,12 +555,13 @@ void Continent::draw(Raster &raster){
     SolidColourFill seaFill(0x00ff7700);
     Vector3 sun(0.0f, 1.0f, 1.0f);
     sun.normalize();
-    ErosianFill erosian(raster.width(), raster.height(), 0.0002f);
+    ErosianFill erosian(raster.width(), raster.height(), 0.5f);
     typedef TriangulatedVoronoi<Graph> UnterTri;
     UnterTri unter(graph);
     for (int i = 0; i != 2; ++i){
         unter.smooth();
     }
+    unter.computeNormals();
     Triangle3WithNormals tri;
     for (auto i = unter.faces().begin(); i != unter.faces().end(); ++i){
         raster.fillTriangle(UnterTri::copyTo(*i, tri), erosian);
@@ -642,7 +643,7 @@ void Continent::draw(Raster &raster){
     /*for (auto i = riverFaces.begin(); i != riverFaces.end(); ++i){
         raster.fill(**i, 0xffffffff);
     }*/
-    for (auto i = rivers.begin(); i != rivers.end(); ++i){
+    /*for (auto i = rivers.begin(); i != rivers.end(); ++i){
         raster.draw((*i)->edge(), 0x00ff9999);
-    }
+    }*/
 }
