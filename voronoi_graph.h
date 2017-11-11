@@ -27,7 +27,7 @@ namespace worldmaker{
         typedef IterableObjectPool<Face> Faces;
         typedef IterableObjectPool<Vertex> Vertices;
         
-        VoronoiGraph(size_t numVertices, size_t numFaces) : mHalfEdges(numVertices), mFaces(numFaces), mVertices(numVertices){}
+        VoronoiGraph(size_t numVertices) : mHalfEdges(numVertices), mFaces(numVertices), mVertices(numVertices){}
         
         template <class Itr>
         void generate(const Itr &begin, const Itr &end){

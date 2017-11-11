@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include "vector3.h"
+#include "spline.h"
 
 namespace worldmaker{
     struct Triangle3{
@@ -30,6 +31,12 @@ namespace worldmaker{
         
         Vector3 normal() const{
             return (vertices[1] - vertices[0]).cross(vertices[2] - vertices[0]);
+        }
+        
+        void getSplines(Spline *splines) const{
+            splines[0] = Spline(vertices[0], vertices[1]);
+            splines[1] = Spline(vertices[1], vertices[2]);
+            splines[2] = Spline(vertices[2], vertices[0]);
         }
         
         template <class Itr>

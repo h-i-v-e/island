@@ -64,8 +64,7 @@ namespace{
             return *this;
         }
     };
-    
-    void GetCentroids(const Continent::Graph &graph, std::vector<Vector2> &out){
+        void GetCentroids(const TerrainGraph &graph, std::vector<Vector2> &out){
         out.clear();
         for (auto i = graph.halfEdges().begin(); i != graph.halfEdges().end(); ++i){
             if (i->face().halfEdge() == &(*i)){
@@ -73,8 +72,9 @@ namespace{
             }
         }
     }
+
     
-    const Continent::HalfEdge &FindPerimeter(const Continent::Graph &graph){
+    const TerrainGraph::HalfEdge &FindPerimeter(const TerrainGraph &graph){
         for (auto i = graph.halfEdges().begin(); i != graph.halfEdges().end(); ++i){
             if (i->onPerimeter()){
                 return *i;
@@ -83,15 +83,15 @@ namespace{
         return *graph.halfEdges().begin();
     }
     
-    void MapSea(const Continent::HalfEdge &perimeter, std::set<Continent::Face> &sea){
-        stack<Continent::Face> unvisited;
+    void MapSea(const TerrainGraph::HalfEdge &perimeter, std::set<TerrainGraph::Face> &sea){
+        stack<TerrainGraph::Face> unvisited;
         unvisited.push(perimeter.face());
         while (!unvisited.empty()){
-            Continent::Face next(unvisited.top());
+            TerrainGraph::Face next(unvisited.top());
             unvisited.pop();
-            for (const Continent::HalfEdge &edge : next.halfEdges()){
+            for (const TerrainGraph::HalfEdge &edge : next.halfEdges()){
                 if (edge.pair){
-                    Continent::Face face(edge.pair->face());
+                    TerrainGraph::Face face(edge.pair->face());
                     if (face.data().sea && sea.find(face) == sea.end()){
                         sea.insert(face);
                         unvisited.push(face);
@@ -108,11 +108,11 @@ namespace{
         raster.fillTriangle(vertices[0], vertices[1], vertices[2], func);
     }
     
-    Vector3 vertexToVector3(const Continent::Vertex &vertex){
+    Vector3 vertexToVector3(const TerrainGraph::Vertex &vertex){
         return Vector3(vertex.position().x, vertex.position().y, vertex.data().z);
     }
     
-    float computeAverageZ(const Continent::Face &face){
+    float computeAverageZ(const TerrainGraph::Face &face){
         float totalZ = 0.0;
         int total = 0;
         for (auto i = face.halfEdges().begin(); i != face.halfEdges().end(); ++i){
@@ -135,13 +135,13 @@ namespace{
     
     typedef std::vector<Triangle3> Triangulation;
     
-    Vector3 fromVertex(const Continent::Vertex &vertex){
+    Vector3 fromVertex(const TerrainGraph::Vertex &vertex){
         const Vector2 &vec = vertex.position();
         return Vector3(vec.x, vec.y, vertex.data().z);
     }
     
-    void RemoveLakes(Continent::Graph &graph){
-        std::set<Continent::Face> sea;
+    void RemoveLakes(TerrainGraph &graph){
+        std::set<TerrainGraph::Face> sea;
         MapSea(FindPerimeter(graph), sea);
         for (auto i = graph.faces().begin(); i != graph.faces().end(); ++i){
             if (i->data().sea){
@@ -157,7 +157,7 @@ namespace{
             return sea;
         }
         
-        float &target(Continent::VertexData &data) const{
+        float &target(TerrainGraph::VertexData &data) const{
             return data.seaDistance;
         }
     };
@@ -167,14 +167,14 @@ namespace{
             return !sea;
         }
         
-        float &target(Continent::VertexData &data) const{
+        float &target(TerrainGraph::VertexData &data) const{
             return data.landDistance;
         }
     };
     
     template <class DistanceTo>
-    float ComputeDistanceTo(Continent::Graph &graph, DistanceTo dt){
-        typedef Continent::Vertex Vertex;
+    float ComputeDistanceTo(TerrainGraph &graph, DistanceTo dt){
+        typedef TerrainGraph::Vertex Vertex;
         typedef std::stack<Vertex> Stack;
         
         Stack circles[2];
@@ -217,21 +217,21 @@ namespace{
         return distance;//(fib + (lin * 15)) >> 4;
     }
     
-    void setZValues(Continent::Graph &graph, float maxDistance, float maxZ){
+    void setZValues(TerrainGraph &graph, float maxDistance, float maxZ){
         float mul = maxZ / maxDistance;
         for (auto i = graph.vertices().begin(); i != graph.vertices().end(); ++i){
             i->data().z = static_cast<float>(i->data().seaDistance - i->data().landDistance) * mul;
         }
     }
     
-    void setDown(Continent::Vertex &vertex){
+    void setDown(TerrainGraph::Vertex &vertex){
         if (vertex.data().z == 0.0f){
             vertex.data().down = nullptr;
             return;
         }
         Vector3 pos(vertex.position().x, vertex.position().y, vertex.data().z);
         float steepest = 1.1f;
-        Continent::Vertex *winner = nullptr;
+        TerrainGraph::Vertex *winner = nullptr;
         auto itr = vertex.inbound();
         for (auto j = itr.begin(); j != itr.end(); ++j){
             if (j->face().data().sea){
@@ -256,13 +256,13 @@ namespace{
         vertex.data().down = winner && steepest <= 0.0f ? winner : nullptr;
     }
     
-    void setDown(Continent::Graph &graph){
+    void setDown(TerrainGraph &graph){
         for (auto i = graph.vertices().begin(); i != graph.vertices().end(); ++i){
             setDown(*i);
         }
     }
     
-    void calculateFlow(Continent::Graph &graph){
+    void calculateFlow(TerrainGraph &graph){
         for (auto i = graph.vertices().begin(); i != graph.vertices().end(); ++i){
             i->data().flow = 0;
         }
@@ -273,13 +273,13 @@ namespace{
         }
     }
     
-    inline bool isCoastal(const Continent::HalfEdge &edge){
+    inline bool isCoastal(const TerrainGraph::HalfEdge &edge){
         return edge.pair && edge.face().data().sea != edge.pair->face().data().sea;
     }
     
-    typedef std::set<const Continent::HalfEdge *> VisitedSet;
+    typedef std::set<const TerrainGraph::HalfEdge *> VisitedSet;
     
-    inline Continent::HalfEdge *findNextCoast(const VisitedSet &visited, const Continent::HalfEdge &edge){
+    inline TerrainGraph::HalfEdge *findNextCoast(const VisitedSet &visited, const TerrainGraph::HalfEdge &edge){
         for (auto j = edge.next->vertex().inbound().begin(); j != edge.next->vertex().inbound().end(); ++j){
             if (isCoastal(*j) && visited.find(&*j) == visited.end()){
                 return &*j;
@@ -288,12 +288,12 @@ namespace{
         return nullptr;
     }
     
-    void mapCoastlines(Continent::Graph &graph, Continent::Coastlines &coastlines){
+    void mapCoastlines(TerrainGraph &graph, std::vector<std::vector<TerrainGraph::HalfEdge*>> &coastlines){
         VisitedSet visited;
         for (auto i = graph.halfEdges().begin(); i != graph.halfEdges().end(); ++i){
             if (isCoastal(*i) && visited.find(&*i) == visited.end()){
                 coastlines.emplace_back();
-                Continent::HalfEdge *start = &*i;
+                TerrainGraph::HalfEdge *start = &*i;
                 do {
                     coastlines.back().push_back(start);
                     visited.insert(start);
@@ -307,16 +307,16 @@ namespace{
     }
     
     
-    void computeDisplacementBlobby(Vector2 &out, const Continent::HalfEdge &a, Continent::HalfEdge &b, const Continent::HalfEdge &c){
+    void computeDisplacementBlobby(Vector2 &out, const TerrainGraph::HalfEdge &a, TerrainGraph::HalfEdge &b, const TerrainGraph::HalfEdge &c){
         float cos = (a.edge().direction() - c.edge().direction()).normalized().dot(b.edge().normal().normalized());
         out = b.edge().normal() * cos * ((randomness.get() * 0.0625f) + 0.0625f);
     }
     
-    void computeDisplacement(Vector2 &out, const Continent::HalfEdge &a, Continent::HalfEdge &b, const Continent::HalfEdge &c){
+    void computeDisplacement(Vector2 &out, const TerrainGraph::HalfEdge &a, TerrainGraph::HalfEdge &b, const TerrainGraph::HalfEdge &c){
         computeDisplacementBlobby(out, a, b, c);
     }
     
-    void tesselateCoastline(Continent::Graph &graph, Continent::HalfEdges &coast){
+    /*void tesselateCoastline(TerrainGraph &graph, TerrainGraph::HalfEdges &coast){
         std::vector<Vector2> displacements;
         displacements.assign(coast.size(), Vector2());
         size_t last = coast.size() - 1;
@@ -340,28 +340,16 @@ namespace{
             coast.push_back(temp[i]->next);
             insert->position() += displacements[i];
         }
-        /*size_t last = temp.size() - 1;
-        for (size_t i = 1; i < last; ++i){
-            coast.push_back(temp[i]);
-            tesselateCoastline(graph, *temp[i - 1], *temp[i], *temp[i + 1]);
-            coast.push_back(temp[i]->next);
-        }
-        coast.push_back(temp[last]);
-        tesselateCoastline(graph, *temp[last - 1], *temp[last], **temp.begin());
-        coast.push_back(temp[last]->next);
-        coast.push_back(*temp.begin());
-        tesselateCoastline(graph, *temp[last], **temp.begin(), *temp[1]);
-        coast.push_back((*temp.begin())->next);*/
         
-    }
+    }*/
     
-    void tesselateCoastline(Continent::Graph &graph, Continent::Coastlines &coast){
+    /*void tesselateCoastline(Continent::Graph &graph, Continent::Coastlines &coast){
         for (auto i = coast.begin(); i != coast.end(); ++i){
             tesselateCoastline(graph, *i);
         }
-    }
+    }*/
     
-    int computeMaxFlow(Continent::Graph &graph){
+    int computeMaxFlow(TerrainGraph &graph){
         int maxFlow = 0;
         for (auto i = graph.vertices().begin(); i != graph.vertices().end(); ++i){
             int flow = i->data().flow;
@@ -372,7 +360,7 @@ namespace{
         return maxFlow;
     }
     
-    void carveRavines(Continent::Graph &graph, float erosianLevel){
+    void carveRavines(TerrainGraph &graph, float erosianLevel){
         float maxFlow = computeMaxFlow(graph);
         for (auto i = graph.vertices().begin(); i != graph.vertices().end(); ++i){
             float flow = i->data().flow;
@@ -396,7 +384,7 @@ namespace{
         triangles.emplace_back(fromVertex(last->vertex()), fromVertex(face.halfEdges().begin()->next->vertex()), centre3);
     }*/
     
-    Vector3 computeNormal(const Continent::Vertex &vertex){
+    Vector3 computeNormal(const TerrainGraph::Vertex &vertex){
         Vector3 total(0.0f, 0.0f, 0.0f);
         for (auto i = vertex.inbound().begin(); i != vertex.inbound().end(); ++i){
             Vector2 centre(i->face().calculateCentroid());
@@ -420,7 +408,7 @@ namespace{
         }
     };
     
-    Vector2 averageAngle(const Continent::Vertex &vert, const Continent::HalfEdge &ignore){
+    Vector2 averageAngle(const TerrainGraph::Vertex &vert, const TerrainGraph::HalfEdge &ignore){
         Vector2 total(0.0f, 0.0f);
         for (auto i = vert.inbound().begin(); i != vert.inbound().end(); ++i){
             if (&*i == &ignore){
@@ -431,8 +419,8 @@ namespace{
         return total.normalized();
     }
     
-    bool computeDisplacementDirection(const Continent::Vertex &vert, Vector2 &output) {
-        auto i = Continent::HalfEdge::findHalfEdgeConnecting(vert.inbound().begin(), vert.inbound().end(), *vert.data().down);
+    bool computeDisplacementDirection(const TerrainGraph::Vertex &vert, Vector2 &output) {
+        auto i = TerrainGraph::HalfEdge::findHalfEdgeConnecting(vert.inbound().begin(), vert.inbound().end(), *vert.data().down);
         if (i == vert.inbound().end()){
             return false;
         }
@@ -440,7 +428,7 @@ namespace{
         if (!vert.data().down->data().down){
             return false;
         }
-        auto j = Continent::HalfEdge::findHalfEdgeConnecting(vert.data().down->inbound().begin(), vert.data().down->inbound().end(), *vert.data().down->data().down);
+        auto j = TerrainGraph::HalfEdge::findHalfEdgeConnecting(vert.data().down->inbound().begin(), vert.data().down->inbound().end(), *vert.data().down->data().down);
         Vector2 out((j == vert.data().down->inbound().end()) ? in : averageAngle(*vert.data().down, *j));
         Vector2 normal(i->edge().normal());
         output = normal * (in + out).dot(normal);
@@ -463,7 +451,7 @@ void Continent::computeNormals(){
     }
 }
 
-void Continent::tesselate(HalfEdges &edges){
+/*void Continent::tesselate(HalfEdges &edges){
     edges.reserve(edges.size() << 1);
     HalfEdges temp;
     copy(edges.begin(), edges.end(), back_inserter(temp));
@@ -483,10 +471,10 @@ void Continent::tesselate(HalfEdges &edges){
         insert->position() += displacementDirection.normalized() * (*i)->edge().direction().magnitude() * ((randomness.get() * 0.25f) + 0.25f);
         edges.push_back((*i)->next);
     }
-}
+}*/
 
-void Continent::generateRivers(int flowThreshold, int tesselations){
-    HalfEdges ravines;
+/*void Continent::generateRivers(int flowThreshold, int tesselations){
+    TerrainGraph::HalfEdges ravines;
     for (auto i = graph.vertices().begin(); i != graph.vertices().end(); ++i){
         if (i->data().down){
             auto down = Continent::HalfEdge::findHalfEdgeConnecting(i->inbound().begin(), i->inbound().end(), *i->data().down);
@@ -505,9 +493,9 @@ void Continent::generateRivers(int flowThreshold, int tesselations){
     //tesselate(ravines);
     //carveRavines(graph, 1.0f);
     tesselateCoastline(graph, mCoastlines);
-}
+}*/
 
-void Continent::generateTiles(int relaxations){
+/*void Continent::generateTiles(int relaxations){
     std::vector<Vector2> points;
     points.reserve(numTiles);
     for (int i = 0; i != numTiles; ++i){
@@ -521,7 +509,7 @@ void Continent::generateTiles(int relaxations){
         }
         GetCentroids(graph, points);
     }
-}
+}*/
 
 void Continent::generateSeasAndLakes(float waterRatio){
     NoiseLayer layers[4];
@@ -556,7 +544,7 @@ void Continent::draw(Raster &raster){
     Vector3 sun(0.0f, 1.0f, 1.0f);
     sun.normalize();
     ErosianFill erosian(raster.width(), raster.height(), 0.5f);
-    typedef TriangulatedVoronoi<Graph> UnterTri;
+    typedef TriangulatedVoronoi<TerrainGraph> UnterTri;
     UnterTri unter(graph);
     for (int i = 0; i != 2; ++i){
         unter.smooth();
