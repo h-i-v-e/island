@@ -10,6 +10,7 @@
 #define vector3_h
 
 #include <cmath>
+#include "vector2.h"
 
 namespace worldmaker{
     struct Vector3{
@@ -18,6 +19,10 @@ namespace worldmaker{
         Vector3() {}
 
         float x, y, z;
+        
+        Vector2 toVector2() const{
+            return Vector2(x, y);
+        }
         
         Vector3 operator-(const Vector3 &other) const{
             return Vector3(x - other.x, y - other.y, z - other.z);

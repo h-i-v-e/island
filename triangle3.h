@@ -61,6 +61,8 @@ namespace worldmaker{
         
         Triangle3WithNormals(){}
         
+        Triangle3WithNormals(const Vector3 &a, const Vector3 &b, const Vector3 &c) : Triangle3(a, b, c){}
+        
         Triangle3WithNormals(const Triangle3 &verts) : Triangle3(verts){}
     };
 }

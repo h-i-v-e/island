@@ -42,8 +42,18 @@ namespace worldmaker {
             return Vector2(x * f, y * f);
         }
         
+        Vector2 &operator*=(float f) {
+            x *= f;
+            y *= f;
+            return *this;
+        }
+        
         Vector2 operator/(float f) const{
             return Vector2(x / f, y / f);
+        }
+        
+        Vector2 normal() const{
+            return Vector2(y, -x);
         }
         
         float sqrMagnitude() const{
@@ -59,11 +69,11 @@ namespace worldmaker {
             return Vector2(x / mag, y / mag);
         }
         
-        bool operator == (const Vector2 &other) const{
+        constexpr bool operator == (const Vector2 &other) const{
             return x == other.x && y == other.y;
         }
         
-        bool operator != (const Vector2 &other) const{
+        constexpr bool operator != (const Vector2 &other) const{
             return x != other.x && y != other.y;
         }
         
@@ -77,7 +87,7 @@ namespace worldmaker {
             return x < other.x;
         }
         
-        float dot(const Vector2 &other) const{
+        constexpr float dot(const Vector2 &other) const{
             return x * other.x + y * other.y;
         }
 

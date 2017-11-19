@@ -255,7 +255,8 @@ namespace worldmaker{
                     xend = std::min(xend, w - 1);
                     while (x <= xend){
                         in.y = y * stepSize;
-                        operator()(x, y) = colourFunc(x, y, in);
+                        uint32_t &colour = operator()(x, y);
+                        colour = colourFunc(x, y, colour, in);
                         in += step;
                         ++x;
                     }

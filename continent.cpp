@@ -64,7 +64,9 @@ namespace{
             return *this;
         }
     };
-        void GetCentroids(const TerrainGraph &graph, std::vector<Vector2> &out){
+    
+    
+    void GetCentroids(const TerrainGraph &graph, std::vector<Vector2> &out){
         out.clear();
         for (auto i = graph.halfEdges().begin(); i != graph.halfEdges().end(); ++i){
             if (i->face().halfEdge() == &(*i)){
@@ -221,6 +223,30 @@ namespace{
         float mul = maxZ / maxDistance;
         for (auto i = graph.vertices().begin(); i != graph.vertices().end(); ++i){
             i->data().z = static_cast<float>(i->data().seaDistance - i->data().landDistance) * mul;
+        }
+        for (auto i = graph.vertices().begin(); i != graph.vertices().end(); ++i){
+            if (i->data().z == 0.0f){
+                int seaCount = 0, landCount = 0;
+                for (auto j = i->inbound().begin(); j != i->inbound().end(); ++j){
+                    float z = j->next->vertex().data().z;
+                    if (z < 0.0f){
+                        ++seaCount;
+                    }
+                    else if (z > 0.0f){
+                        ++landCount;
+                    }
+                }
+                if (seaCount > landCount){
+                    i->data().z = landCount * mul;
+                    i->data().cliff = true;
+                    for (auto j = i->inbound().begin(); j != i->inbound().end(); ++j){
+                        float z = j->next->vertex().data().z;
+                        if (z < 0.0f){
+                            j->next->vertex().data().z -= mul;
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -540,10 +566,11 @@ void Continent::generateSeasAndLakes(float waterRatio){
 }
 
 void Continent::draw(Raster &raster){
+    Grid<float> zBuffer(raster.width(), raster.height());
     SolidColourFill seaFill(0x00ff7700);
     Vector3 sun(0.0f, 1.0f, 1.0f);
     sun.normalize();
-    ErosianFill erosian(raster.width(), raster.height(), 0.5f);
+    /*ErosianFill erosian(raster.width(), raster.height(), 0.5f);
     typedef TriangulatedVoronoi<TerrainGraph> UnterTri;
     UnterTri unter(graph);
     for (int i = 0; i != 2; ++i){
@@ -553,22 +580,39 @@ void Continent::draw(Raster &raster){
     Triangle3WithNormals tri;
     for (auto i = unter.faces().begin(); i != unter.faces().end(); ++i){
         raster.fillTriangle(UnterTri::copyTo(*i, tri), erosian);
-    }
-    erosian.erosian.erode(10000000, 25918);
-    erosian.erosian.smooth();
+    }*/
+    ErosianMap erosian(raster.width(), raster.height(), 0.5f);
+    graph.copyTo(erosian, 2);
+    erosian.erode(10000000, 25918);
+    graph.copyBackZValues(erosian);
+    Rivers::Edges riverEdges;
+    graph.findRivers(riverEdges);
+    Rivers rivers(riverEdges, 2, 0.015);
+    Rivers::Meshes meshes;
+    //std::cout << "Raising cliffs" << std::endl;
+    erosian.raiseCliffs(64);
+    //std::cout << "Raised" << std::endl;
+    //erosian.smooth();
+    rivers.getMeshesAndCarveRiverBeds(erosian, meshes);
+    erosian.smooth();
+    rivers.correctMeshHeight(erosian, meshes);
     Grid<Vector3> normals(raster.width(), raster.height());
-    erosian.erosian.calculateNormals(normals);
+    erosian.calculateNormals(normals);
     float invZ = 1.0 / maxZ;
     for (int y = 0; y != normals.height(); ++y){
         for (int x = 0; x != normals.width(); ++x){
             Vector3 normal(normals(x, y));
-            float z = erosian.erosian(x, y).z * invZ;
+            float z = erosian(x, y).z * invZ;
+            zBuffer(x, y) = z;
             uint32_t nInt = std::max<int>(std::min<int>(sun.dot(normal * -1.0f) * 255, 255), 0);
             if (z < 0.0f){
                 float blend = std::max(1.0f + (z * 20.0f), 0.0f) * 0.75f;
                 uint32_t red = (nInt >> 1) * blend;
                 uint32_t green = (static_cast<uint32_t>(nInt * blend) + 0x99) >> 1;
                 raster(x, y) = red | (green << 8) | 0x00990000;
+            }
+            else if (z < 0.0015f){
+                raster(x, y) = nInt | nInt << 8 | nInt << 16;
             }
             else{
                 uint32_t zInt = std::min<int>(z * 255, 255);
@@ -596,7 +640,37 @@ void Continent::draw(Raster &raster){
         raster.draw(i->edge(), 0x99999999);
     }*/
     /*for (auto i = graph.halfEdges().begin(); i != graph.halfEdges().end(); ++i){
-        raster.draw(i->edge(), 0x00000000);
+        raster.draw(i->edge(), 0x00666666);
+    }*/
+    /*Rivers rivers(riverEdges, 2, 0.015);
+    Rivers::Meshes meshes;
+    rivers.getMeshes(erosian, meshes);*/
+    struct Blue{
+        const Grid<float> *zBuffer;
+        
+        uint32_t operator()(int x, int y, uint32_t colour, const Raster::Vector3WithNormal &in){
+            float z = (*zBuffer)(x, y);
+            if (z > 0.0f && z < in.z){
+                uint32_t red = (colour & 0xff) >> 1;
+                uint32_t green = (colour & 0xff00) >> 9;
+                return red | (green << 8) | 0x00990000;
+            }
+            return colour;
+        }
+    } blue;
+    blue.zBuffer = &zBuffer;
+    for (auto i = meshes.begin(); i != meshes.end(); ++i){
+        for (int j = 2; j < i->triangles.size(); j += 3){
+            Triangle3WithNormals tri(i->vertices[i->triangles[j - 2]], i->vertices[i->triangles[j - 1]], i->vertices[i->triangles[j]]);
+            tri.normals[0] = tri.normals[1] = tri.normals[2] = (tri.vertices[1] - tri.vertices[0]).cross(tri.vertices[2] - tri.vertices[0]).normalized();
+            raster.fillTriangle(tri, blue);
+        }
+    }
+    
+    /*for (auto i = rivers.sources().begin(); i != rivers.sources().end(); ++i){
+        for (const RiverVertex *vert = *i; vert && vert->next(); vert = vert->next()){
+            raster.draw(Edge(*vert, *vert->next()), 0x00ff6666);
+        }
     }*/
     
     /*for (auto i = graph.faces().begin(); i != graph.faces().end(); ++i){

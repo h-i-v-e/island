@@ -9,10 +9,102 @@
 #include "erosian_map.h"
 #include <random>
 #include <iostream>
+#include <memory>
+#include <set>
 
 using namespace worldmaker;
 
 namespace{
+    
+    typedef std::set<uint64_t> VisitedCliffs;
+    
+    constexpr uint64_t makeKey(uint32_t x, uint32_t y){
+        return (static_cast<uint64_t>(y) << 32) | x;
+    }
+    
+    inline void getKey(uint64_t value, int &x, int &y){
+        x = value & 0xffffffff;
+        y = value >> 32;
+    }
+    
+    int isCliff(/*VisitedCliffs &visited, */ErosianMap &map, uint32_t x, uint32_t y){
+        if (map(x, y).z <= 0.0f){
+            return -2;
+        }
+        uint8_t landCount = 0, seaCount = 0;
+        for (uint32_t i = y - 1; i <= y + 1; ++i){
+            for (uint32_t j = x - 1; j <= x + 1; ++j){
+                if (i == y && j == x){
+                    continue;
+                }
+                if (map(j, i).z < 0.0f){
+                    ++seaCount;
+                }
+                else{
+                    ++landCount;
+                }
+            }
+        }
+        if (seaCount == 0 || landCount == 0){
+            return -2;
+        }
+        if (seaCount > landCount){
+            return 1;
+        }
+        //else if (seaCount < landCount){
+            return -1;
+        //}
+        /*landCount = seaCount = 0;
+        for (int i = y - 1; i <= y + 1; ++i){
+            for (int j = x - 1; j <= x + 1; ++j){
+                uint64_t key = makeKey(j, i);
+                if (visited.find(key) != visited.end()){
+                    continue;
+                }
+                else{
+                    visited.insert(key);
+                }
+                switch(isCliff(visited, map, j, i)){
+                    case -1:
+                        ++landCount;
+                    case 1:
+                        ++seaCount;
+                }
+            }
+        }
+        return (seaCount > landCount) ? -1 : 1;*/
+    }
+    
+    void blendCliff(ErosianMap &map, VisitedCliffs &visited, uint32_t x, uint32_t y, float value, float minValue){
+        static float diagonalWeight = 1.0f / sqrtf(2.0f);
+        static float halfDiagonalWeight = diagonalWeight * 0.5f;
+        //float &z = map(x, y).z;
+        //z = (z < 0.0f) ? -value : value;
+        map(x, y).z += value;
+        value *= 0.1f;
+        if (value < minValue){
+            return;
+        }
+        for (uint32_t i = y - 1; i <= y + 1; ++i){
+            for (uint32_t j = x - 1; j <= x + 1; ++j){
+                if ((i == y && j == x) || (map(j, i).z < 0.0f)){
+                    continue;
+                }
+                uint64_t key = makeKey(j, i);
+                if (visited.find(key) != visited.end()){
+                    continue;
+                }
+                /*visited.insert(key);*/
+                if (j != x && i != y){
+                    float lesser = /*(map(j, i).z <= 0.0f ? -value : value)*/value * halfDiagonalWeight;
+                    map(j, y).z += lesser;
+                    map(x, i).z += lesser;
+                    value *= diagonalWeight;
+                }
+                blendCliff(map, visited, j, i, value, minValue);
+            }
+        }
+    }
     
     void traceDrop(ErosianMap &em, int x, int y){
         static float diagonalWeight = 1.0f / sqrtf(2.0f);
@@ -139,9 +231,11 @@ void ErosianMap::erode(int iterations, int seed){
     std::uniform_int_distribution<int> wDist(0, mWidth - 1), hDist(0, mHeight - 1);
     std::mt19937 get(seed);
     while (iterations--){
+#ifdef DEBUG
         if (iterations % 10000 == 0){
             std::cout << iterations << std::endl;
         }
+#endif
         traceDrop(*this, wDist(get), hDist(get));
     }
 }
@@ -154,16 +248,22 @@ void ErosianMap::smooth(){
         }
     }
     int xEnd = mWidth - 1, yEnd = mHeight - 1;
-    float zMul = 1.0f / 9.0f;
+    //float zMul = 1.0f / 9.0f;
     for (int y = 1; y != yEnd; ++y){
         for (int x = 1; x != xEnd; ++x){
             float total = 0.0f;
+            int count = 0;
+            bool sea = zValues(x, y) < 0.0f;
             for (int iy = y - 1, jy = y + 1; iy != jy; ++iy){
                 for (int ix = x - 1, jx = x + 1; ix != jx; ++ix){
-                    total += zValues(ix, iy);
+                    float z = zValues(ix, iy);
+                    if ((sea && z < 0.0f) || ((!sea) && z >= 0.0f)){
+                        total += z;
+                        ++count;
+                    }
                 }
             }
-            operator()(x, y).z = total * zMul;
+            operator()(x, y).z = total / count;
         }
     }
 }
@@ -241,6 +341,32 @@ void ErosianMap::trackRivers(Rivers &rivers, int threshold) const{
     for (const DownTracker *i = down.data(), *j = down.data() + (mWidth * mHeight); i != j; ++i){
         if (i->flow >= threshold){
             rivers.emplace_back(i->x, i->y);
+        }
+    }
+}
+
+
+void ErosianMap::raiseCliffs(int steps){
+    //amount *= 0.5f;
+    //auto visited = std::unique_ptr<Grid<bool>>(new Grid<bool>(mWidth, mHeight));
+    //visited->zero();
+    int lastX = mWidth - 1, lastY = mHeight - 1;
+    //float minAmount = amount * 0.001f;
+    VisitedCliffs visitedCliffs;
+    for (int i = 0; i != steps; ++i){
+        visitedCliffs.clear();
+        for (int y = 1; y != lastY; ++y){
+            for (int x = 1; x != lastX; ++x){
+                if (isCliff(*this, x, y) == 1){
+                    visitedCliffs.insert(makeKey(x, y));
+                }
+            }
+        }
+        for (auto i : visitedCliffs){
+            int x, y;
+            getKey(i, x, y);
+            operator()(x, y).z = -0.001f;
+        /*blendCliff(*this, visitedCliffs, x, y, amount, minAmount);*/
         }
     }
 }

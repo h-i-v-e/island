@@ -11,6 +11,7 @@
 
 #include "voronoi_graph.h"
 #include "grid.h"
+#include "river.h"
 
 namespace worldmaker{
     
@@ -38,8 +39,9 @@ namespace worldmaker{
             float z, seaDistance, landDistance;
             int flow;
             Vertex *down;
+            bool cliff;
             
-            VertexData() : flow(0), down(nullptr), z(0.0f){}
+            VertexData() : z(0.0f), flow(0), down(nullptr), cliff(false){}
         };
         
         void generateTiles(unsigned int randomSeed, size_t numTiles, int relaxations);
@@ -68,7 +70,11 @@ namespace worldmaker{
             return voronoi.halfEdges();
         }
         
-        VertexGrid &copyTo(VertexGrid &) const;
+        VertexGrid &copyTo(VertexGrid &, int smoothings = 0) const;
+        
+        void copyBackZValues(const VertexGrid &);
+        
+        Rivers::Edges &findRivers(Rivers::Edges &edges, float thresholdStandardDeviations = 3.0f);
 
     private:
         Voronoi voronoi;

@@ -12,6 +12,7 @@
 #include "grid.h"
 #include "vector3.h"
 #include <vector>
+#include "mesh.h"
 
 namespace worldmaker{
     class ErosianMap : public Grid<Vector3>{
@@ -31,6 +32,8 @@ namespace worldmaker{
         constexpr float maxCarry() const{
             return mMaxCarry;
         }
+        
+        void raiseCliffs(int);
     private:
         float mMaxCarry;
     };

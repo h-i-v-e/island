@@ -31,6 +31,7 @@ namespace worldmaker{
         struct VData{
             float z;
             Vector3 normal;
+            bool cliff;
         };
         
     private:
