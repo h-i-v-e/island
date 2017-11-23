@@ -19,13 +19,13 @@ namespace worldmaker{
     class Continent{
     public:
         
-        Continent(unsigned int randomSeed, int numTiles, int relaxations, float maxZ) : graph(numTiles), maxZ(maxZ){
-            graph.generateTiles(randomSeed, numTiles, relaxations);
+        Continent(std::default_random_engine &rnd, int numTiles, int relaxations, float maxZ) : graph(numTiles), maxZ(maxZ){
+            graph.generateTiles(rnd, numTiles, relaxations);
         }
         
         //void generateTiles(int relaxations);
         
-        void generateSeasAndLakes(float waterRatio);
+        void generateSeasAndLakes(std::default_random_engine &, float waterRatio);
         
         void generateRivers(int flowThreshold, int tesselations);
         

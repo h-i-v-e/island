@@ -20,10 +20,12 @@ namespace worldmaker{
     template <class FaceData = EmptyData, class VertexData = EmptyData>
     class DalauneyTriangulation{
     public:
-        typedef HalfEdge<FaceData, VertexData> HalfEdgeType;
+        typedef HalfEdge<Vector2, FaceData, VertexData> HalfEdgeType;
+        typedef typename HalfEdgeType::Face Face;
+        typedef typename HalfEdgeType::Vertex Vertex;
         typedef IterableObjectPool<HalfEdgeType> HalfEdges;
-        typedef IterableObjectPool<typename HalfEdgeType::Face> Faces;
-        typedef IterableObjectPool<typename HalfEdgeType::Vertex> Vertices;
+        typedef IterableObjectPool<Face> Faces;
+        typedef IterableObjectPool<Vertex> Vertices;
         
         DalauneyTriangulation(const std::vector<Vector2> &points);
         
@@ -42,13 +44,18 @@ namespace worldmaker{
         }
         
         const Vertices &vertices() const{
-            return mVertices;
+            return *mVertices;
+        }
+        
+        const Face &externalFace() const{
+            return *mExternalFace;
         }
         
     private:
         HalfEdges *mHalfEdges;
         Faces *mFaces;
         Vertices *mVertices;
+        Face *mExternalFace;
         
         struct TriangleWithCircumcircle{
             Triangle triangle;
@@ -161,14 +168,14 @@ namespace worldmaker{
             badTriangles.clear();
         }
         auto pair = rTree.all(searchBuffer);
-        VertexMap<HalfEdges, Vertices, Faces> builder(mHalfEdges, mVertices, mFaces);
+        VertexMap<Vector2, HalfEdges, Vertices, Faces> builder(mHalfEdges, mVertices, mFaces);
         while (pair.first != pair.second){
             if (!OfSuperTriangle(super.triangle, pair.first->triangle)){
                 builder.addPolygon(pair.first->triangle.vertices, pair.first->triangle.vertices + 3);
             }
             ++pair.first;
         }
-        builder.bind();
+        mExternalFace = builder.bind();
     }
 }
 

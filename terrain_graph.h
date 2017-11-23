@@ -12,6 +12,7 @@
 #include "voronoi_graph.h"
 #include "grid.h"
 #include "river.h"
+#include <random>
 
 namespace worldmaker{
     
@@ -44,7 +45,7 @@ namespace worldmaker{
             VertexData() : z(0.0f), flow(0), down(nullptr), cliff(false){}
         };
         
-        void generateTiles(unsigned int randomSeed, size_t numTiles, int relaxations);
+        void generateTiles(std::default_random_engine &, size_t numTiles, int relaxations);
         
         const Faces &faces() const{
             return voronoi.faces();
@@ -68,6 +69,10 @@ namespace worldmaker{
         
         HalfEdges &halfEdges() {
             return voronoi.halfEdges();
+        }
+        
+        const Face &externalFace() const{
+            return voronoi.externalFace();
         }
         
         VertexGrid &copyTo(VertexGrid &, int smoothings = 0) const;

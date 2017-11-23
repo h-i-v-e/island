@@ -19,7 +19,7 @@ namespace worldmaker{
     class VoronoiGraph{
     public:
         
-        typedef HalfEdge<FaceData, VertexData> HalfEdge;
+        typedef HalfEdge<Vector2, FaceData, VertexData> HalfEdge;
         typedef typename HalfEdge::Face Face;
         typedef typename HalfEdge::Vertex Vertex;
         
@@ -29,28 +29,26 @@ namespace worldmaker{
         
         VoronoiGraph(size_t numVertices) : mHalfEdges(numVertices), mFaces(numVertices), mVertices(numVertices){}
         
-        template <class Itr>
-        void generate(const Itr &begin, const Itr &end){
+        template <class Itr/*, class FaceType*/>
+        void generate(/*const FaceType *externalFace, */const Itr &begin, const Itr &end){
             mHalfEdges.drain();
             mFaces.drain();
             mVertices.drain();
             std::set<Vector2> visited;
             std::vector<Vector2> vertexBuffer;
-            VertexMap<HalfEdges, Vertices, Faces> builder(&mHalfEdges, &mVertices, &mFaces);
+            VertexMap<Vector2, HalfEdges, Vertices, Faces> builder(&mHalfEdges, &mVertices, &mFaces);
             for (Itr i = begin; i != end; ++i){
                 if (visited.find(i->vertex().position()) != visited.end()){
                     continue;
                 }
                 visited.insert(i->vertex().position());
-                if (i->fullyConnected()){
-                    vertexBuffer.clear();
-                    for (auto &j : i->vertex().inbound()){
-                        vertexBuffer.push_back(GetCircumcircleCentre(j));
-                    }
-                    builder.addPolygon(vertexBuffer.begin(), vertexBuffer.end());
+                vertexBuffer.clear();
+                for (auto &j : i->vertex().inbound()){
+                    vertexBuffer.push_back(GetCircumcircleCentre(j));
                 }
+                builder.addPolygon(vertexBuffer.begin(), vertexBuffer.end());
             }
-            builder.bind();
+            mExternalFace = builder.bind();
         }
         
         const HalfEdges &halfEdges() const{
@@ -77,10 +75,15 @@ namespace worldmaker{
             return mVertices;
         }
         
+        const Face &externalFace() const{
+            return *mExternalFace;
+        }
+        
     private:
         HalfEdges mHalfEdges;
         Faces mFaces;
         Vertices mVertices;
+        Face *mExternalFace;
         
         template <class TriangulationHalfEdge>
         static Vector2 GetCircumcircleCentre(const TriangulationHalfEdge &edge){

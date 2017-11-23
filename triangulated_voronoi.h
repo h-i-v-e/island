@@ -21,7 +21,7 @@ namespace worldmaker{
         
         struct VData;
         
-        typedef HalfEdge<EmptyData, VData> HalfEdge;
+        typedef HalfEdge<Vector2, EmptyData, VData> HalfEdge;
         typedef typename HalfEdge::Face Face;
         typedef typename HalfEdge::Vertex Vertex;
         typedef IterableObjectPool<HalfEdge> HalfEdges;
@@ -37,6 +37,7 @@ namespace worldmaker{
     private:
         HalfEdges mHalfEdges;
         Vertices mVertices;
+        Face *mExternalFace;
         int maxFlow;
         
         Faces mFaces;
@@ -77,9 +78,12 @@ namespace worldmaker{
         
     public:
         TriangulatedVoronoi(const VoronoiGraph &graph) : mHalfEdges(graph.vertices().size() * 6), mFaces(graph.halfEdges().size()), mVertices((graph.vertices().size() << 1) + graph.faces().size()){
-            VertexMap<HalfEdges, Vertices, Faces> builder(&mHalfEdges, &mVertices, &mFaces);
+            VertexMap<Vector2, HalfEdges, Vertices, Faces> builder(&mHalfEdges, &mVertices, &mFaces);
             std::map<Vector2, float> zMap;
             for (auto i = graph.faces().begin(); i != graph.faces().end(); ++i){
+                if (&*i == &graph.externalFace()){
+                    continue;
+                }
                 Vector2 centre(i->calculateCentroid());
                 Vector2 vertices[3];
                 Vector2 mid;
@@ -108,7 +112,7 @@ namespace worldmaker{
                 vertices[2] = mid;
                 builder.addPolygon(vertices, vertices + 3);
             }
-            builder.bind();
+            mExternalFace = builder.bind();
             for (auto i = mVertices.begin(); i != mVertices.end(); ++i){
                 auto j = zMap.find(i->position());
                 i->data().z = j != zMap.end() ? j->second : notSet();
@@ -171,6 +175,10 @@ namespace worldmaker{
         
         const Vertices &vertices() const{
             return mVertices;
+        }
+        
+        const Face &externalFace() const{
+            return *mExternalFace;
         }
         
         static Triangle3WithNormals &copyTo(const Face &face, Triangle3WithNormals &tri){

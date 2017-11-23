@@ -27,10 +27,8 @@ namespace{
         y = value >> 32;
     }
     
-    int isCliff(/*VisitedCliffs &visited, */ErosianMap &map, uint32_t x, uint32_t y){
-        if (map(x, y).z <= 0.0f){
-            return -2;
-        }
+    int isCliff(ErosianMap &map, uint32_t x, uint32_t y){
+        bool sea = map(x, y).z < 0.0f;
         uint8_t landCount = 0, seaCount = 0;
         for (uint32_t i = y - 1; i <= y + 1; ++i){
             for (uint32_t j = x - 1; j <= x + 1; ++j){
@@ -48,31 +46,15 @@ namespace{
         if (seaCount == 0 || landCount == 0){
             return -2;
         }
-        if (seaCount > landCount){
+        if ((seaCount > landCount) && !sea){
             return 1;
         }
-        //else if (seaCount < landCount){
+        else if (seaCount < landCount && sea){
             return -1;
-        //}
-        /*landCount = seaCount = 0;
-        for (int i = y - 1; i <= y + 1; ++i){
-            for (int j = x - 1; j <= x + 1; ++j){
-                uint64_t key = makeKey(j, i);
-                if (visited.find(key) != visited.end()){
-                    continue;
-                }
-                else{
-                    visited.insert(key);
-                }
-                switch(isCliff(visited, map, j, i)){
-                    case -1:
-                        ++landCount;
-                    case 1:
-                        ++seaCount;
-                }
-            }
         }
-        return (seaCount > landCount) ? -1 : 1;*/
+        else{
+            return -3;
+        }
     }
     
     void blendCliff(ErosianMap &map, VisitedCliffs &visited, uint32_t x, uint32_t y, float value, float minValue){
@@ -347,18 +329,19 @@ void ErosianMap::trackRivers(Rivers &rivers, int threshold) const{
 
 
 void ErosianMap::raiseCliffs(int steps){
-    //amount *= 0.5f;
-    //auto visited = std::unique_ptr<Grid<bool>>(new Grid<bool>(mWidth, mHeight));
-    //visited->zero();
     int lastX = mWidth - 1, lastY = mHeight - 1;
-    //float minAmount = amount * 0.001f;
-    VisitedCliffs visitedCliffs;
+    VisitedCliffs visitedCliffs, visitedBeaches;
     for (int i = 0; i != steps; ++i){
         visitedCliffs.clear();
+        visitedBeaches.clear();
         for (int y = 1; y != lastY; ++y){
             for (int x = 1; x != lastX; ++x){
-                if (isCliff(*this, x, y) == 1){
-                    visitedCliffs.insert(makeKey(x, y));
+                switch (isCliff(*this, x, y)){
+                    case 1:
+                        visitedCliffs.insert(makeKey(x, y));
+                        break;
+                    case -1:
+                        visitedBeaches.insert(makeKey(x, y));
                 }
             }
         }
@@ -366,7 +349,11 @@ void ErosianMap::raiseCliffs(int steps){
             int x, y;
             getKey(i, x, y);
             operator()(x, y).z = -0.001f;
-        /*blendCliff(*this, visitedCliffs, x, y, amount, minAmount);*/
+        }
+        for (auto i : visitedBeaches){
+            int x, y;
+            getKey(i, x, y);
+            operator()(x, y).z = 0.001f;
         }
     }
 }

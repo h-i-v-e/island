@@ -23,7 +23,7 @@ namespace{
         out.x = std::numeric_limits<float>::min();
         int found = 0;
         for (auto i = tri.halfEdges().begin(); i != tri.halfEdges().end(); ++i){
-            Edge edge(i->edge());
+            Edge edge(i->vertex().position(), i->next->vertex().position());
             Vector2 direction(edge.direction());
             float x = direction.y != 0.0f ? (((y * direction.x) - (edge.endA.y * direction.x))/ direction.y) + edge.endA.x : edge.endA.x;
             if (Edge::between(edge.endA.x, edge.endB.x, x)){
@@ -168,10 +168,9 @@ Rivers::Edges &TerrainGraph::findRivers(Rivers::Edges &edges, float thresholdSta
     return edges;
 }
 
-void TerrainGraph::generateTiles(unsigned int randomSeed, size_t numTiles, int relaxations){
+void TerrainGraph::generateTiles(std::default_random_engine &gen, size_t numTiles, int relaxations){
     std::vector<Vector2> points;
     points.reserve(numTiles);
-    std::mt19937 gen(randomSeed);
     std::uniform_real_distribution<float> dis(0.0f, 1.0f);
     for (int i = 0; i != numTiles; ++i){
         points.emplace_back(dis(gen), dis(gen));
@@ -195,7 +194,9 @@ TerrainGraph::VertexGrid &TerrainGraph::copyTo(VertexGrid &grid, int smoothings)
         graph.smooth();
     }
     for (auto i = graph.faces().begin(); i != graph.faces().end(); ++i){
-        fillTriangle(grid, *i);
+        if (&*i != &graph.externalFace()){
+            fillTriangle(grid, *i);
+        }
     }
     return grid;
 }

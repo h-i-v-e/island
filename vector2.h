@@ -18,6 +18,11 @@ namespace worldmaker {
         
         Vector2(float x, float y) : x(x), y(y){}
         
+        Vector2 &zero(){
+            x = y = 0.0f;
+            return *this;
+        }
+        
         const Vector2 &operator()(float x, float y){
             this->x = x;
             this->y = y;

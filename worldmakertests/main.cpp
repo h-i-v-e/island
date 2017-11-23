@@ -79,17 +79,19 @@ void writePNG(const char* filename, std::vector<unsigned char>& image, unsigned 
     }
 }*/
 
-void DrawPerimeter(const HalfEdge<> *h, Raster &raster){
-    HalfEdge<>::Set visited;
+/*void DrawPerimeter(const HalfEdge<Vector2> *h, Raster &raster){
+    HalfEdge<Vector2>::Set visited;
     for (h = h->nextPerimeterEdge(visited); h; h = h->nextPerimeterEdge(visited)){
-        raster.draw(h->edge(), 0xff0000ff);
+        raster.draw(Edge(h->vertex().position(), h->next->vertex().position()), 0xff0000ff);
     }
-}
+}*/
 
 TEST_CASE("Continent", "Continent"){
-    Continent continent(666, 4096, 2, 0.1f);
+    random_device rd;
+    default_random_engine rand(rd());
+    Continent continent(rand, 4096, 2, 0.05f);
     //continent.generateTiles(2);
-    continent.generateSeasAndLakes(0.5f);
+    continent.generateSeasAndLakes(rand, 0.5f);
     Raster raster(1024, 1024);
     raster.fill(0xffffffff);
     continent.draw(raster);

@@ -63,7 +63,28 @@ namespace worldmaker{
             return Vector3(-direction.y, direction.x, direction.y * endA.x - direction.x * endA.y);
         }
         
-        bool intersection (const Edge &b, Vector2 &result) const;
+        bool parallel(const Edge &edge) const{
+            return normal().dot(edge.direction()) == 0.0f;
+        }
+        
+        bool intersectionTime(const Edge &edge, float &result) const{
+            Vector2 n(normal());
+            float cosAngle = n.dot(edge.direction());
+            if (cosAngle == 0.0f){
+                return false;
+            }
+            result = (endA - edge.endA).dot(n) / n.dot(edge.direction());
+            return true;
+        }
+        
+        bool intersection(const Edge &other, Vector2 &result) const{
+            float hitTime;
+            if (intersectionTime(other, hitTime)){
+                result = other.endA + (other.direction() * hitTime);
+                return true;
+            }
+            return false;
+        }
         
         static constexpr bool between (float a, float b, float c){
             return (c >= a && c <= b) || (c <= a && c >= b);

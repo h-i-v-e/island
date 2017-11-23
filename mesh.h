@@ -23,6 +23,8 @@ namespace worldmaker{
         Normals normals;
         TextureCoordinates textureCoordinates;
         Triangles triangles;
+        
+        void decimate(int vertices);
     };
 }
 

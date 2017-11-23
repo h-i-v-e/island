@@ -90,6 +90,20 @@ namespace worldmaker{
             return *this;
         }
         
+        bool operator < (const Vector3 &other) const{
+            if (x < other.x){
+                return true;
+            }
+            if (y < other.y){
+                return true;
+            }
+            return z < other.z;
+        }
+        
+        bool operator == (const Vector3 &other) const{
+            return x == other.x && y == other.y && z == other.z;
+        }
+        
         static Vector3 zero(){
             return Vector3(0.0f, 0.0f, 0.0f);
         }

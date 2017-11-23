@@ -10,22 +10,21 @@
 #define half_edge_h
 
 #include <algorithm>
-#include "edge.h"
 #include <set>
 #include <map>
 #include "optional.h"
-#include "bounding_rectangle.h"
+#include <iostream>
 
 namespace worldmaker{
     
     struct EmptyData{
     };
     
-    template<class FaceData = EmptyData, class VertexData = EmptyData>
+    template<class VectorType, class FaceData = EmptyData, class VertexData = EmptyData>
     class HalfEdge
     {
     public:
-        template <class F, class V, class A>
+        template <class T, class F, class V, class A>
         friend class VertexMap;
         
         typedef std::set<const HalfEdge*> Set;
@@ -80,7 +79,7 @@ namespace worldmaker{
         public:
             friend class HalfEdge;
             
-            template <class F, class V, class A>
+            template <class T, class F, class V, class A>
             friend class VertexMap;
             
             template<bool Const>
@@ -153,45 +152,34 @@ namespace worldmaker{
                 return edge;
             }
             
-            BoundingRectangle bounds() const{
-                BoundingRectangle bounds;
-                bounds.clear();
-                for (auto i = halfEdges().begin(); i != halfEdges().end(); ++i){
-                    bounds.add(i->vertex().position());
-                }
-                return bounds;
-            }
-            
             bool operator < (const Face &face) const{
                 return edge < face.edge;
             }
             
-            Vector2 calculateCentroid() const;
-            
-            bool contains(const Vector2 &vec) const;
+            VectorType calculateCentroid() const;
         };
         
         class Vertex{
         private:
-            Vector2 mPosition;
+            VectorType mPosition;
             HalfEdge *edge;
             VertexData mData;
             
         public:
-            template <class F, class V, class A>
+            template <class T, class F, class V, class A>
             friend class VertexMap;
             
-            Vertex (const Vector2 &position, HalfEdge *edge) : mPosition(position), edge(edge){}
+            Vertex (const VectorType &position, HalfEdge *edge) : mPosition(position), edge(edge){}
             
             Vertex () : edge(nullptr){}
             
             friend class HalfEdge;
             
-            const Vector2 &position() const{
+            const VectorType &position() const{
                 return mPosition;
             }
             
-            Vector2 &position(){
+            VectorType &position(){
                 return mPosition;
             }
             
@@ -226,12 +214,13 @@ namespace worldmaker{
                 BaseInboundHalfEdgeIterator(typename HalfEdgeIteratorBase<Const>::incremented_type edge, bool incremented) : HalfEdgeIteratorBase<Const>(edge, incremented){}
                 
                 BaseInboundHalfEdgeIterator &operator++(){
-                    if (HalfEdgeIteratorBase<Const>::first->pair){
+                    /*if (HalfEdgeIteratorBase<Const>::first->pair){
                         HalfEdgeIteratorBase<Const>::first = HalfEdgeIteratorBase<Const>::first->pair->next;
                     }
                     else{
                         HalfEdgeIteratorBase<Const>::first = nullptr;
-                    }
+                    }*/
+                    HalfEdgeIteratorBase<Const>::first = HalfEdgeIteratorBase<Const>::first->pair->next;
                     HalfEdgeIteratorBase<Const>::incremented = true;
                     return *this;
                 }
@@ -272,6 +261,29 @@ namespace worldmaker{
             
             const HalfEdge &halfEdge() const{
                 return *edge;
+            }
+            
+            template<class HalfEdgeAllocator, class FaceAllocator>
+            Face *erase(HalfEdgeAllocator &hAllocator, FaceAllocator &fAllocator){
+                HalfEdge *floating = nullptr;
+                Face *face = fAllocator.allocate();
+                face->edge = edge->pair->next;
+                std::vector<std::pair<HalfEdge*, HalfEdge*>> toConnect;
+                std::vector<HalfEdge*> toDelete;
+                for (auto i = inbound().begin(); i != inbound().end(); ++i){
+                    toConnect.emplace_back(i->findLast(), i->pair->next);
+                    toDelete.push_back(&*i);
+                    toDelete.push_back(i->pair);
+                    fAllocator.release(i->mFace);
+                }
+                for (auto i = toConnect.begin(); i != toConnect.end(); ++i){
+                    i->first->next = i->second;
+                    i->mFace = face;
+                }
+                for (auto i = toDelete.begin(); i != toDelete.end(); ++i){
+                    hAllocator.release(*i);
+                }
+                return face;
             }
         };
         
@@ -315,11 +327,7 @@ namespace worldmaker{
             return *mVertex;
         }
         
-        Edge edge() const {
-            return next ? Edge(mVertex->position(), next->vertex().position()) : Edge(mVertex->position(), mVertex->position());
-        }
-        
-        template<class HalfEdgeAllocator>
+        /*template<class HalfEdgeAllocator>
         void split(Vertex *vertex, HalfEdgeAllocator &allocator){
             vertex->mPosition = mVertex->mPosition + ((next->mVertex->mPosition - mVertex->mPosition) * 0.5f);
             HalfEdge *a = allocator.allocate();
@@ -337,7 +345,7 @@ namespace worldmaker{
                 a->pair = b;
                 b->pair = a;
             }
-        }
+        }*/
         
         HalfEdge *findLast() const{
             HalfEdge *last = next;
@@ -347,7 +355,7 @@ namespace worldmaker{
             return last;
         }
         
-        HalfEdge *nextPerimeterEdge(Set &visited) const{
+        /*HalfEdge *nextPerimeterEdge(Set &visited) const{
             for (HalfEdge *i = next; i && i != this; i = i->next){
                 if (i->pair == nullptr && visited.find(i) == visited.end()){
                     visited.insert(i);
@@ -363,14 +371,9 @@ namespace worldmaker{
                 }
             }
             return nullptr;
-        }
+        }*/
         
-        bool matches (const Edge &edge) const{
-            return pair && ((mVertex->position() == edge.endA && pair->vertex().position() == edge.endB) ||
-            (mVertex->position() == edge.endB && pair->vertex().position() == edge.endA));
-        }
-        
-        bool fullyConnected() const{
+        /*bool fullyConnected() const{
             for (auto h : face().halfEdges()){
                 if (!h.pair){
                     return false;
@@ -381,7 +384,7 @@ namespace worldmaker{
         
         bool onPerimeter() const{
             return !pair;
-        }
+        }*/
         
         template <class Itr, class VertexMap, class Allocator>
         static HalfEdge *fromPolygon (Itr begin, Itr end, VertexMap &vertexMap, Allocator &allocator, HalfEdge::Face *face){
@@ -417,9 +420,10 @@ namespace worldmaker{
         }
     };
     
-    template<class FaceData, class VertexData>
-    Vector2 HalfEdge<FaceData, VertexData>::Face::calculateCentroid() const{
-        Vector2 total(0.0f, 0.0f);
+    template<class VectorType, class FaceData, class VertexData>
+    VectorType HalfEdge<VectorType, FaceData, VertexData>::Face::calculateCentroid() const{
+        VectorType total;
+        total.zero();
         float count = 0.0f;
         const HalfEdge *next = edge;
         do {
@@ -430,13 +434,13 @@ namespace worldmaker{
         return total / count;
     }
     
-    template <class EdgeAllocator, class VertexAllocator, class FaceAllocator>
+    template <class VectorType, class EdgeAllocator, class VertexAllocator, class FaceAllocator>
     class VertexMap{
     private:
         typedef typename EdgeAllocator::ObjectType HalfEdge;
         typedef typename HalfEdge::Vertex Vertex;
         typedef typename HalfEdge::Face Face;
-        typedef std::map<Vector2, Vertex *> Map;
+        typedef std::map<VectorType, Vertex *> Map;
         typedef std::multimap<Vertex *, HalfEdge *> Fans;
         
         Map map;
@@ -447,10 +451,10 @@ namespace worldmaker{
     public:
         VertexMap(EdgeAllocator *edgeAllocator, VertexAllocator *vertexAllocator, FaceAllocator *faceAllocator) : edgeAllocator(edgeAllocator), vertexAllocator(vertexAllocator), faceAllocator(faceAllocator){}
         
-        void set(const Vector2 &position, HalfEdge *halfEdge){
+        void set(const VectorType &position, HalfEdge *halfEdge){
             auto i = map.find(position);
             if (i == map.end()){
-                i = map.insert(i, std::make_pair(position, vertexAllocator->allocate(/*position, halfEdge*/)));
+                i = map.insert(i, std::make_pair(position, vertexAllocator->allocate()));
                 i->second->mPosition = position;
                 i->second->edge = halfEdge;
             }
@@ -473,7 +477,56 @@ namespace worldmaker{
             }
         }
         
-        void bind(){
+        Face *createExternalFace(){
+            Face *face = faceAllocator->allocate();
+            std::vector<HalfEdge *> externalEdges;
+            for (auto i = edgeAllocator->begin(); i != edgeAllocator->end(); ++i){
+                if (!i->pair){
+                    externalEdges.emplace_back(&*i);
+                }
+            }
+            std::cout << externalEdges.size() << " external edges" << std::endl;
+            std::multimap<VectorType, HalfEdge *> outsideEdges;
+            for (auto i = externalEdges.begin(); i != externalEdges.end(); ++i){
+                (*i)->pair = edgeAllocator->allocate();
+                (*i)->pair->pair = *i;
+                (*i)->pair->mVertex = (*i)->next->mVertex;
+                outsideEdges.emplace((*i)->pair->mVertex->position(), (*i)->pair);
+            }
+            for (auto i = externalEdges.begin(); i != externalEdges.end(); ++i){
+                auto j = outsideEdges.equal_range((*i)->vertex().position());
+                if (j.first != j.second){
+                    (*i)->pair->next = j.first->second;
+                    outsideEdges.erase(j.first);
+                }
+                else{
+                    std::cout << "Missing vertex" << std::endl;
+                    exit(1);
+                }
+                /*if (outsideEdges.find((*i)->vertex().position()) == outsideEdges.end()){
+                    std::cout << "Missing vertex" << std::endl;
+                    exit(1);
+                }
+                (*i)->pair->next = outsideEdges.find((*i)->vertex().position())->second;*/
+                (*i)->pair->mFace = face;
+                face->edge = (*i)->pair;
+            }
+            //----------------
+            std::cout << "Checking external face" << std::endl;
+            int count = 0;
+            for (auto i = face->halfEdges().begin(); i != face->halfEdges().end(); ++i){
+                ++count;
+            }
+            if (count != externalEdges.size()){
+                std::cout << "Bugger " << count << std::endl;
+                exit(1);
+            }
+            std::cout << "Found " << count << " external edges" << std::endl;
+            //-------------------
+            return face;
+        }
+        
+        Face *bind(){
             Fans fans;
             for (auto i = edgeAllocator->begin(); i != edgeAllocator->end(); ++i){
                 fans.insert(std::make_pair(&i->vertex(), &*i));
@@ -486,6 +539,7 @@ namespace worldmaker{
                 }
             }
             Glue(start, fans.end());
+            return createExternalFace();
         }
         
         template <class Itr>
@@ -508,17 +562,6 @@ namespace worldmaker{
             last->next = first;
         }
     };
-
-    template<class FaceData, class VertexData>
-    bool HalfEdge<FaceData, VertexData>::Face::contains(const Vector2 &vec) const{
-        Edge ray(bounds().externalPoint(), calculateCentroid());
-        for (auto i = halfEdges().begin(); i != halfEdges().end(); ++i){
-            if (ray.intersects(i->edge())){
-                return true;
-            }
-        }
-        return false;
-    }
 }
 
 #endif /* half_edge_h */
