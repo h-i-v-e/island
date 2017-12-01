@@ -1,2 +1,4 @@
 *.xcodeproj
 .DS_Store
+.vs
+x64

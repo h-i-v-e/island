@@ -1,0 +1,11 @@
+add_library(motu
+	continent.cpp
+	erosian_map.cpp
+	lodepng.cpp
+	mesh.cpp
+	raster.cpp
+	river.cpp
+	simplex_noise.cpp
+	terrain_graph.cpp
+	triangulated_terrain_graph.cpp
+)
