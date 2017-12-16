@@ -291,11 +291,23 @@ void Continent::draw(Raster &raster) {
 	TriangulatedTerrainGraph firstPass(graph);
 	firstPass.smooth();
 	firstPass.erode(8, 0.02f);
+	Mesh rivers;
+	TriangulatedTerrainGraph::RiverSections riverSections;
+	TriangulatedTerrainGraph::LastList lastList;
+	firstPass.fillLastList(lastList, 3.0f);
+	//firstPass.smoothRiverBeds(lastList);
+	//firstPass.carveRiverBeds(lastList);
+	lastList.copyToRiverSections(riverSections);
 	TriangulatedTerrainGraph tri(firstPass);
 	//tri.smooth();
 	tri.erode(8, 0.02f);
-	Rivers::Edges riverEdges;
-	tri.findRivers(riverEdges);
+	lastList.clear();
+	tri.fillLastListInterpolated(riverSections, lastList);
+	tri.carveRiverBeds(lastList);
+	tri.smoothRiverBeds(lastList);
+	tri.generateRiverMesh(lastList, rivers);
+	/*rivers.clear();
+	tri.findRivers(rivers);*/
 	Mesh mesh;
 	tri.toMesh(mesh);
 	//mesh.smooth();
@@ -326,5 +338,6 @@ void Continent::draw(Raster &raster) {
 			}
 		}
 	}
+	raster.draw(rivers, 0xffffffff);
 	//raster.draw(mesh, 0xffffffff);
 }

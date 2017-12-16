@@ -330,6 +330,27 @@ void Mesh::decimate(int num){
     }*/
 }
 
+void Mesh::load(std::vector<Triangle3> &tris) {
+	std::map<Vector3, size_t> vertexMap;
+	triangles.reserve(tris.size());
+	vertices.reserve(tris.size() + 2);
+	for (auto i = tris.begin(); i != tris.end(); ++i) {
+		for (size_t j = 0; j != 3; ++j) {
+			const Vector3 &vert = i->vertices[j];
+			auto k = vertexMap.find(vert);
+			if (k != vertexMap.end()) {
+				triangles.push_back(k->second);
+			}
+			else {
+				size_t pos = vertices.size();
+				vertices.push_back(vert);
+				triangles.push_back(pos);
+				vertexMap.emplace(vert, pos);
+			}
+		}
+	}
+}
+
 void Mesh::calculateNormals() {
 	std::multimap<size_t, Vector3> triangleNormals;
 	for (size_t i = 2; i < triangles.size(); i += 3) {

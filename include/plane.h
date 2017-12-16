@@ -12,6 +12,10 @@
 namespace motu{
     struct Plane{
         Vector3 point, normal;
+
+		Plane() {}
+
+		Plane(const Vector3 &point, const Vector3 &normal) : point(point), normal(normal) {}
         
         bool intersectionTime(const Vector3 &point, const Vector3 &direction, float &when) const{
             float nd = normal.dot(direction);
@@ -34,6 +38,12 @@ namespace motu{
             }
             return false;
         }
+
+		static bool pointBetween(const Plane &a, const Plane &b, const Vector3 &point) {
+			float ca = (a.point - point).dot(a.normal);
+			float cb = (b.point - point).dot(b.normal);
+			return (ca <= 0.0f && cb >= 0.0f) || (ca >= 0.0f && cb <= 0.0f);
+		}
     };
 }
 

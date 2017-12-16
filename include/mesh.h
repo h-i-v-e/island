@@ -10,8 +10,8 @@
 #define mesh_h
 
 #include <vector>
-#include "vector3.h"
 #include "grid.h"
+#include "triangle3.h"
 
 
 namespace motu{
@@ -19,6 +19,16 @@ namespace motu{
         typedef std::vector<Vector3> Vertices;
         typedef std::vector<Vector3> Normals;
         typedef std::vector<size_t> Triangles;
+
+		Mesh() {}
+
+		void clear() {
+			vertices.clear();
+			normals.clear();
+			triangles.clear();
+		}
+
+		void load(std::vector<Triangle3> &triangles);
 
 		struct VertexAndNormal {
 			Vector3 vertex, normal;

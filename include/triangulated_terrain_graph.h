@@ -4,12 +4,13 @@
 #include "dalauney_triangulation.h"
 #include "grid.h"
 #include "river.h"
+#include "triangle3.h"
+#include <vector>
 
 namespace motu {
 
 	struct Mesh;
 	class TerrainGraph;
-	class Raster;
 
 	class TriangulatedTerrainGraph {
 	public:
@@ -54,7 +55,37 @@ namespace motu {
 
 		void copyBackZValues(const Grid<Vector3> &);
 
-		Rivers::Edges &findRivers(Rivers::Edges &edges, float thresholdStandardDeviations = 3.0f);
+		typedef std::pair<Vector2, Vector2> RiverSection;
+		typedef std::vector<RiverSection> RiverSections;
+
+		struct RiverBed {
+			Triangulation::Vertex *last;
+			float lowestZ;
+
+			RiverBed(Triangulation::Vertex *last) : last(last), lowestZ(last->data().z) {}
+		};
+
+		struct LastList : public std::vector<std::pair<Triangulation::Vertex *, RiverBed>> {
+			float flowMultiplier;
+
+			RiverSections &copyToRiverSections(RiverSections &riverSections) const{
+				riverSections.reserve(size());
+				for (auto i : *this) {
+					riverSections.emplace_back(i.second.last->position(), i.first->position());
+				}
+				return riverSections;
+			}
+		};
+
+		void fillLastList(LastList &, float thresholdStandardDeviations = 3.0f);
+
+		void fillLastListInterpolated(RiverSections &, LastList &);
+
+		void carveRiverBeds(LastList &);
+
+		void smoothRiverBeds(LastList &);
+
+		Mesh &generateRiverMesh(LastList &lastList, Mesh &mesh);
 
 	private:
 		Triangulation *mTriangulation;

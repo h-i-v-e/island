@@ -327,7 +327,7 @@ namespace motu{
             return *mVertex;
         }
         
-        /*template<class HalfEdgeAllocator>
+        template<class HalfEdgeAllocator>
         void split(Vertex *vertex, HalfEdgeAllocator &allocator){
             vertex->mPosition = mVertex->mPosition + ((next->mVertex->mPosition - mVertex->mPosition) * 0.5f);
             HalfEdge *a = allocator.allocate();
@@ -345,7 +345,7 @@ namespace motu{
                 a->pair = b;
                 b->pair = a;
             }
-        }*/
+        }
         
         HalfEdge *findLast() const{
             HalfEdge *last = next;
@@ -354,37 +354,6 @@ namespace motu{
             }
             return last;
         }
-        
-        /*HalfEdge *nextPerimeterEdge(Set &visited) const{
-            for (HalfEdge *i = next; i && i != this; i = i->next){
-                if (i->pair == nullptr && visited.find(i) == visited.end()){
-                    visited.insert(i);
-                    return i;
-                }
-                else if (i->pair){
-                    for (HalfEdge *j = i->pair->next; j && j != i->pair; ++j){
-                        if (j->pair == nullptr && visited.find(j) == visited.end()){
-                            visited.insert(j);
-                            return j;
-                        }
-                    }
-                }
-            }
-            return nullptr;
-        }*/
-        
-        /*bool fullyConnected() const{
-            for (auto h : face().halfEdges()){
-                if (!h.pair){
-                    return false;
-                }
-            }
-            return true;
-        }
-        
-        bool onPerimeter() const{
-            return !pair;
-        }*/
         
         template <class Itr, class VertexMap, class Allocator>
         static HalfEdge *fromPolygon (Itr begin, Itr end, VertexMap &vertexMap, Allocator &allocator, typename HalfEdge::Face *face){
@@ -519,7 +488,7 @@ namespace motu{
             }
             if (count != externalEdges.size()){
                 std::cout << "Bugger " << count << std::endl;
-                exit(1);
+                //exit(1);
             }
             std::cout << "Found " << count << " external edges" << std::endl;
             //-------------------

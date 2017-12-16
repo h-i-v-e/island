@@ -23,6 +23,10 @@ namespace motu{
         Edge edge() const{
             return Edge(endA.x, endA.y, endB.x, endB.y);
         }
+
+		Vector3 direction() const{
+			return endB - endA;
+		}
     };
 }
 

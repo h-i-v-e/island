@@ -12,6 +12,7 @@
 #include <algorithm>
 #include "vector3.h"
 #include "spline.h"
+#include "plane.h"
 
 namespace motu{
     struct Triangle3{
@@ -38,6 +39,10 @@ namespace motu{
             splines[1] = Spline(vertices[1], vertices[2]);
             splines[2] = Spline(vertices[2], vertices[0]);
         }
+
+		void flipRotation() {
+			std::swap(vertices[0], vertices[2]);
+		}
         
         template <class Itr>
         static Vector3 computeNormal(const Vector3 &vertex, Itr begin, Itr end){
@@ -54,6 +59,18 @@ namespace motu{
             }
             return total.normalized();
         }
+
+		bool intersection(const Spline &spline, Vector3 &intersection) {
+			Plane plane(vertices[0], normal());
+			if (!plane.intersection(spline.endA, spline.direction(), intersection)) {
+				return false;
+			}
+			float rotation = (intersection - vertices[0]).cross(vertices[1] - vertices[0]).dot(plane.normal);
+			if ((intersection - vertices[1]).cross(vertices[2] - vertices[1]).dot(plane.normal) != rotation) {
+				return false;
+			}
+			return (intersection - vertices[2]).cross(vertices[0] - vertices[2]).dot(plane.normal) == rotation;
+		}
     };
     
     struct Triangle3WithNormals : public Triangle3{
