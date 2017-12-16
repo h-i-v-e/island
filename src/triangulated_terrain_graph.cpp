@@ -343,16 +343,40 @@ namespace {
 		}
 	}
 
-	Vertex *findLowestJoiningVertex(Vertex *up, Vertex *down) {
+	struct ForbiddenSet {
+		std::multimap<const Vertex*, const Vertex*> map;
+
+		void add(const Vertex *vert) {
+			for (auto i = vert->inbound().begin(); i != vert->inbound().end(); ++i) {
+				map.emplace(i->next->mVertex, vert);
+			}
+		}
+
+		bool allowed(const Vertex *vert, const Vertex *last, const Vertex *next) const{
+			auto i = map.equal_range(vert);
+			while (i.first != i.second) {
+				if (i.first->second != last && i.first->second != next) {
+					return false;
+				}
+				++i.first;
+			}
+			return true;
+		}
+	};
+
+	Vertex *findLowestJoiningVertex(Vertex *up, Vertex *down, ForbiddenSet &forbidden) {
 		float min = std::numeric_limits<float>::max();
 		Vertex *joining = nullptr;
 		for (auto i = up->inbound().begin(); i != up->inbound().end(); ++i) {
 			for (auto j = down->inbound().begin(); j != down->inbound().end(); ++j) {
-				if (i->next->mVertex == j->next->mVertex && i->next->vertex().data().z < min){
+				if (i->next->mVertex == j->next->mVertex && i->next->vertex().data().z < min && forbidden.allowed(i->next->mVertex, up, down)){
 					joining = i->next->mVertex;
 					min = i->next->vertex().data().z;
 				}
 			}
+		}
+		if (joining) {
+			forbidden.add(joining);
 		}
 		return joining;
 	}
@@ -512,9 +536,17 @@ void TriangulatedTerrainGraph::fillLastListInterpolated(TriangulatedTerrainGraph
 	for (auto i = mTriangulation->vertices().begin(); i != mTriangulation->vertices().end(); ++i) {
 		vertMap.emplace(i->position(), &*i);
 	}
+	ForbiddenSet forbidden;
+	for (RiverSection &vecs : verts) {
+		forbidden.add(vertMap[vecs.first]);
+		forbidden.add(vertMap[vecs.second]);
+	}
 	for (RiverSection &vecs : verts) {
 		Triangulation::Vertex *up = vertMap[vecs.first], *down = vertMap[vecs.second];
-		Triangulation::Vertex *middle = findLowestJoiningVertex(up, down);
+		Triangulation::Vertex *middle = findLowestJoiningVertex(up, down, forbidden);
+		if (!middle) {
+			continue;
+		}
 		up->data().down = middle;
 		middle->data().down = down;
 		lastList.emplace_back(middle, up);
@@ -530,16 +562,19 @@ void TriangulatedTerrainGraph::fillLastListInterpolated(TriangulatedTerrainGraph
 	vettedSources.reserve(sources.size());
 	for (Triangulation::Vertex *source : sources) {
 		visited.clear();
-		bool pass = true;
+		bool pass = true, reachesSea = false;
 		for (Triangulation::Vertex *vert = source; pass && vert; vert = vert->data().down) {
 			if (visited.find(vert) != visited.end()){
 				pass = false;
 			}
 			else {
+				if (vert->data().z < 0.0f) {
+					reachesSea = true;
+				}
 				visited.insert(vert);
 			}
 		}
-		if (pass) {
+		if (pass && reachesSea) {
 			vettedSources.push_back(source);
 		}
 	}
