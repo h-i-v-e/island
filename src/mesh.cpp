@@ -174,33 +174,72 @@ namespace{
 			mesh.vertices[mesh.triangles[offset + 2]]
 		);
 	}
+}
 
-	bool probeZ(const Mesh &mesh, const RefRtree &rtree, RefRtree::Values &rtreeBuffer, const Vector2 &pos, Vector3 &hit) {
-		rtreeBuffer.clear();
-		Spline probe(Vector3(pos.x, pos.y, 1.0f), Vector3(pos.x, pos.y, -1.0f));
-		auto bounds = rtree.containing(pos, rtreeBuffer);
-		/*while (bounds.first != bounds.second) {
-			if (getTriangle(mesh, *bounds.first).intersection(probe, hit)) {
-				return true;
+Mesh &Mesh::tesselate(Mesh &mesh) const {
+	struct Flip {
+		Vector3 a, b;
+		enum State{
+			COMPLETE,
+			INCOMPLETE,
+			FLIPPED
+		} state;
+
+		Flip(const Vector3 &vec, bool swapped) {
+			if (swapped) {
+				state = FLIPPED;
+				b = vec;
 			}
-			++bounds.first;
-		}*/
-		for (auto i = bounds.first; i != bounds.second; ++i) {
-			Triangle tri(getTriangle(mesh, *bounds.first).toTriangle2());
-			Vector2 shift((tri.findCentroid() - pos).normalized() * FLT_EPSILON);
-			Spline eps(probe + Vector3(shift.x, shift.y, 0.0f));
-			if (getTriangle(mesh, *bounds.first).intersection(/*probe*/eps, hit)) {
-				return true;
+			else {
+				a = vec;
+				state = INCOMPLETE;
 			}
 		}
-		/*for (auto i = bounds.first; i != bounds.second; ++i) {
-			if (getTriangle(mesh, *bounds.first).toTriangle2().contains(pos)) {
-				//getTriangle(mesh, *bounds.first).intersection(probe, hit);
-				return true;
+	};
+	std::map<Spline, Flip> flips;
+	for (size_t i = 2; i < triangles.size(); i += 3) {
+		Triangle3 tri(getTriangle(*this, i - 2));
+		Vector3 centre(tri.baricentre());
+		Spline splines[3];
+		tri.getSplines(splines);
+		for (size_t j = 0; j != 3; ++j) {
+			Spline spline(splines[j]);
+			bool swapped = spline.endB < spline.endA;
+			if (swapped) {
+				std::swap(spline.endA, spline.endB);
 			}
-		}*/
-		return false;
+			auto k = flips.find(spline);
+			if (k != flips.end()) {
+				if (swapped) {
+					k->second.b = centre;
+				}
+				else {
+					k->second.a = centre;
+				}
+				k->second.state = Flip::COMPLETE;
+			}
+			else {
+				flips.emplace_hint(k, spline, Flip(centre, swapped));
+			}
+		}
 	}
+	std::vector<Triangle3> triangles;
+	triangles.reserve(flips.size() << 1);
+	for (auto i = flips.begin(); i != flips.end(); ++i) {
+		switch (i->second.state){
+			case Flip::COMPLETE:
+				triangles.emplace_back(i->first.endA, i->second.a, i->second.b);
+				triangles.emplace_back(i->first.endB, i->second.b, i->second.a);
+				break;
+			case Flip::FLIPPED:
+				triangles.emplace_back(i->first.endB, i->second.b, i->first.endA);
+				break;
+			default:
+				triangles.emplace_back(i->first.endA, i->second.a, i->first.endB);
+		}
+	}
+	mesh.load(triangles);
+	return mesh;
 }
 
 void Mesh::load(std::vector<Triangle3> &tris) {
@@ -270,7 +309,6 @@ void Mesh::smooth() {
 		}
 		movedVertices.push_back(total / count);
 	}
-	//vertices = movedVertices;
 	//avoiding some memory fragmentation
 	std::copy(movedVertices.data(), movedVertices.data() + movedVertices.size(), vertices.data());
 }
@@ -311,11 +349,7 @@ Mesh &Mesh::slice(const BoundingBox &bounds, Mesh &out) const {
 	std::vector<Triangle3> inside, selection, split;
 	inside.reserve(triangles.size() / 3);
 	for (size_t i = 2; i < triangles.size(); i += 3) {
-		Triangle3 tri(
-			vertices[triangles[i - 2]],
-			vertices[triangles[i - 1]],
-			vertices[triangles[i]]
-		);
+		Triangle3 tri(getTriangle(*this, i));
 		if (bounds.intersects(tri)) {
 			if (bounds.contains(tri)) {
 				inside.push_back(tri);

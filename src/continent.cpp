@@ -344,7 +344,10 @@ void Continent::draw(Raster &raster) {
 	}
 	raster.draw(rivers, 0xffffffff);
 	Mesh sliced;
-	mesh.slice(BoundingBox(0.25f, 0.25f, -1.0f, 0.5f, 0.5f, 1.0f), sliced);
-	raster.draw(sliced, 0x00000000);
+	firstPass.toMesh(sliced);
+	Mesh tesselated;
+	sliced.tesselate(tesselated);
+	//mesh.slice(BoundingBox(0.25f, 0.25f, -1.0f, 0.5f, 0.5f, 1.0f), sliced);
+	raster.draw(tesselated, 0x00000000);
 	//raster.draw(mesh, 0xffffffff);
 }

@@ -76,6 +76,8 @@ namespace motu{
 		}
 
 		Mesh &slice(const BoundingBox &bounds, Mesh &out) const;
+
+		Mesh &tesselate(Mesh &out) const;
     };
 }
 

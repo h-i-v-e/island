@@ -53,6 +53,16 @@ namespace motu{
 			}
 			return false;
 		}
+
+		bool operator < (const Spline spline) const {
+			if (endA < spline.endA) {
+				return true;
+			}
+			if (spline.endA < endA) {
+				return false;
+			}
+			return endB < spline.endB;
+		}
     };
 }
 
