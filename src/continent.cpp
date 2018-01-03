@@ -21,6 +21,8 @@
 #include "triangle3.h"
 #include "triangulated_terrain_graph.h"
 #include "erosian_map.h"
+#include "mesh_decimator.h"
+#include "bounding_box.h"
 
 using namespace motu;
 using namespace std;
@@ -310,6 +312,8 @@ void Continent::draw(Raster &raster) {
 	tri.findRivers(rivers);*/
 	Mesh mesh;
 	tri.toMesh(mesh);
+	/*tri.makeManifold(mesh);
+	decimate(mesh, 255 * 255);*/
 	//mesh.smooth();
 	//mesh.calculateNormals();
 	ErosianMap grid(1024, 1024, 0.5f);
@@ -339,5 +343,8 @@ void Continent::draw(Raster &raster) {
 		}
 	}
 	raster.draw(rivers, 0xffffffff);
+	Mesh sliced;
+	mesh.slice(BoundingBox(0.25f, 0.25f, -1.0f, 0.5f, 0.5f, 1.0f), sliced);
+	raster.draw(sliced, 0x00000000);
 	//raster.draw(mesh, 0xffffffff);
 }

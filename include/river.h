@@ -46,7 +46,7 @@ namespace motu{
             Edge edge(*this, *mNext);
             insert->mNext = mNext;
             mNext = insert;
-            Vector2 pos(edge.midPoint() + (edge.normal() * shift * 10.0f));
+            Vector2 pos(edge.midPoint() + (edge.perp() * shift * 10.0f));
             insert->x = pos.x;
             insert->y = pos.y;
         }

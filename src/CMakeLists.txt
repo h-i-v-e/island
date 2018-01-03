@@ -8,4 +8,5 @@ add_library(motu
 	simplex_noise.cpp
 	terrain_graph.cpp
 	triangulated_terrain_graph.cpp
+	mesh_decimator.cpp
 )

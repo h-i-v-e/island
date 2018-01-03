@@ -87,6 +87,8 @@ namespace motu {
 
 		Mesh &generateRiverMesh(LastList &lastList, Mesh &mesh);
 
+		Mesh &makeManifold(Mesh &mesh) const;
+
 	private:
 		Triangulation *mTriangulation;
 	};

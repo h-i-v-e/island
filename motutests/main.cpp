@@ -108,6 +108,54 @@ TEST_CASE("Continent", "Continent"){
     writePNG("/Users/jerome/test.png", buffer, 1024, 1024);
 }
 
+/*template<class Vertex>
+Vector3 fromVertex(const Vertex &vertex) {
+	return Vector3(vertex.position().x, vertex.position().y, vertex.data());
+}
+
+TEST_CASE("Decimate", "Decimate") {
+	random_device rd;
+	default_random_engine rand(rd());
+	uniform_real_distribution<float> dis(0.0f, 1.0f);
+	std::vector<Vector2> points;
+	points.reserve(16);
+	for (size_t i = 0; i != 16; ++i) {
+		points.emplace_back(dis(rand), dis(rand));
+	}
+	DalauneyTriangulation<EmptyData, float> tri(points);
+	for (auto i = tri.vertices().begin(); i != tri.vertices().end(); ++i) {
+		i->data() = dis(rand);
+	}
+	std::vector<Triangle3> triangles;
+	triangles.reserve(14);
+
+	for (auto i = tri.faces().begin(); i != tri.faces().end(); ++i) {
+		triangles.emplace_back(
+			fromVertex(i->halfEdge()->vertex()),
+			fromVertex(i->halfEdge()->next->vertex()),
+			fromVertex(i->halfEdge()->next->next->vertex())
+		);
+	}
+	Mesh mesh;
+	mesh.load(triangles);
+	mesh.decimate(8);
+	Raster raster(1024, 1024);
+	raster.fill(0xffffffff);
+	raster.draw(mesh, 0x00000000);
+	int rasterLength = raster.length() * 3;
+	std::vector<unsigned char> buffer;
+	buffer.reserve(rasterLength);
+	const unsigned char *raw = reinterpret_cast<const unsigned char*>(raster.data());
+	for (int i = 0, j = raster.length() << 2; i != j; i += 4) {
+		buffer.push_back(raw[i]);
+		buffer.push_back(raw[i + 1]);
+		buffer.push_back(raw[i + 2]);
+	}
+	//std::copy(raw, raw + rasterLength, std::back_inserter(buffer));
+	writePNG("/Users/jerome/test.png", buffer, 1024, 1024);
+}*/
+
+
 /*TEST_CASE("Triangulation", "Triangulation"){
     static int num = 1024;
     std::vector<Vector2> points;

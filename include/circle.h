@@ -38,7 +38,7 @@ namespace motu{
         
         bool intersects(const Edge &edge) const{
             Vector2 contact;
-            Edge (centre, centre + edge.normal()).intersection (edge, contact);
+            Edge (centre, centre + edge.perp()).intersection (edge, contact);
             return (contact - centre).sqrMagnitude() <= radius * radius;
         }
         

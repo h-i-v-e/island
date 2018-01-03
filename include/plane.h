@@ -22,11 +22,11 @@ namespace motu{
             if (nd == 0.0f){
                 return false;
             }
-            when = (this->point - point).dot(normal) / nd;
+            when = - (point - this->point).dot(normal) / nd;
             return true;
         }
         
-        float distanceTo(Vector3 point) const{
+        float distanceTo(const Vector3 &point) const{
             return (this->point - point).dot(normal);
         }
         

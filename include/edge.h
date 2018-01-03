@@ -50,8 +50,8 @@ namespace motu{
             return direction().magnitude();
         }
         
-        Vector2 normal() const{
-            return Vector2(endB.y - endA.y, endA.x - endB.x);
+        Vector2 perp() const{
+            return Vector2(endA.y - endB.y, endB.x - endA.x);
         }
         
         Vector2 midPoint() const{
@@ -64,16 +64,16 @@ namespace motu{
         }
         
         bool parallel(const Edge &edge) const{
-            return normal().dot(edge.direction()) == 0.0f;
+            return perp().dot(edge.direction()) == 0.0f;
         }
         
         bool intersectionTime(const Edge &edge, float &result) const{
-            Vector2 n(normal());
-            float cosAngle = n.dot(edge.direction());
-            if (cosAngle == 0.0f){
+            Vector2 n(perp());
+            float d = n.dot(edge.direction());
+            if (d == 0.0f){
                 return false;
             }
-            result = (endA - edge.endA).dot(n) / n.dot(edge.direction());
+            result = (endA - edge.endA).dot(n) / d;
             return true;
         }
         
@@ -90,8 +90,12 @@ namespace motu{
             return (c >= a && c <= b) || (c <= a && c >= b);
         }
 
+		bool between(const Vector2 &vec) const{
+			return between(endA.x, endB.x, vec.x) && between(endA.y, endB.y, vec.y);
+		}
+
         bool intersects(const Edge &b, Vector2 &result) const{
-            return intersection (b, result) && between (endA.x, endB.x, result.x) && between (endA.y, endB.y, result.y);
+			return intersection(b, result) && between(result) && b.between(result);
         }
         
         bool intersects(const Edge &b) const{

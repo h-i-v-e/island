@@ -29,6 +29,10 @@ namespace motu {
             this->y = y;
             return *this;
         }
+
+		Vector2 operator * (const Vector2 &vec) const {
+			return Vector2(x * vec.x, y * vec.y);
+		}
         
         Vector2 operator+(const Vector2 &other) const{
             return Vector2(x + other.x, y + other.y);

@@ -8,21 +8,25 @@
 
 #include "mesh.h"
 #include "half_edge.h"
-#include "iterable_object_pool.h"
+#include "iterable_releasable_object_pool.h"
 #include <queue>
 #include "plane.h"
 #include <vector>
 #include <map>
 #include "triangle3.h"
 #include <algorithm>
+#include <cassert>
+#include "bounding_rectangle.h"
+#include "brtree.h"
+#include "triangle.h"
+#include <array>
+#include "bounding_box.h"
 
 using namespace motu;
 
 namespace{
-    typedef HalfEdge<Vector3> HalfEdge;
-    typedef IterableObjectPool<HalfEdge> HalfEdges;
-    typedef IterableObjectPool<HalfEdge::Face> Faces;
-    typedef IterableObjectPool<HalfEdge::Vertex> Verts;
+
+	typedef BRTree<size_t> RefRtree;
 
 	void interpolated(const Vector3 &endA, const Vector3 &endB, float hitTime, Vector3 &out) {
 		out = endA + ((endB - endA) * hitTime);
@@ -149,185 +153,54 @@ namespace{
 			}
 		};
 	};
-    
-    struct TriangleVertexIterator{
-        const Mesh *mesh;
-        int triangleIndex;
-        
-        TriangleVertexIterator(const Mesh *mesh, int triangleIndex) : mesh(mesh), triangleIndex(triangleIndex){}
-        
-        const Vector3 &operator*() const{
-            return mesh->vertices[mesh->triangles[triangleIndex]];
-        }
-        
-        const Vector3 *operator->() const{
-            return &mesh->vertices[mesh->triangles[triangleIndex]];
-        }
-        
-        bool operator != (const TriangleVertexIterator &other) const{
-            return triangleIndex != other.triangleIndex;
-        }
-        
-        bool operator == (const TriangleVertexIterator &other) const{
-            return triangleIndex != other.triangleIndex;
-        }
-        
-        TriangleVertexIterator &operator++(){
-            ++triangleIndex;
-            return *this;
-        }
-    };
-    
-    void constructHalfEdgeGraph(const Mesh &mesh, HalfEdges &halfEdges, Faces &faces, Verts &vertices){
-        VertexMap<Vector3, HalfEdges, Verts, Faces> builder(&halfEdges, &vertices, &faces);
-        for (int i = 0; i != mesh.triangles.size(); i += 3){
-            builder.addPolygon(TriangleVertexIterator(&mesh, i), TriangleVertexIterator(&mesh, i + 3));
-        }
-        builder.bind();
-    }
-    
-    struct CollapsePoint{
-        HalfEdge::Vertex *vertA, *vertB;
-        Vector3 collapseTo;
-        float cost;
-        
-        CollapsePoint(){}
-        
-        CollapsePoint(HalfEdge::Vertex *vertA, HalfEdge::Vertex *vertB){
-            if (vertA > vertB){
-                this->vertA = vertB;
-                this->vertB = vertA;
-            }
-            else{
-                this->vertA = vertA;
-                this->vertB = vertB;
-            }
-        }
-    };
-    
-    typedef ObjectPool<CollapsePoint> CollapsePointPool;
-    
-    struct CollapsePointCompare{
-        bool operator()(const CollapsePoint *a, const CollapsePoint *b){
-            if (a->cost < b->cost){
-                return true;
-            }
-            if (a->vertA < b->vertA){
-                return true;
-            }
-            return a->vertB < b->vertB;
-        }
-    };
-    
-    struct SplineTest{
-        Vector3 a, b;
-        
-        SplineTest(const HalfEdge &edge) : a(edge.vertex().position()), b(edge.next->vertex().position()){
-            if (b < a){
-                std::swap(a, b);
-            }
-        }
-        
-        bool operator<(const SplineTest &other){
-            if (a < other.a){
-                return true;
-            }
-            return b < other.b;
-        }
-    };
-    
-    struct QueueOrder{
-        bool operator()(const CollapsePoint &a, const CollapsePoint &b){
-            return a.cost < b.cost;
-        }
-    };
-    
-    Plane &toPlane(const HalfEdge::Face &face, Plane &plane){
-        plane.point = face.halfEdge()->vertex().position();
-        const Vector3 &next = face.halfEdge()->next->vertex().position();
-        plane.normal = (next - plane.point).cross(face.halfEdge()->next->next->vertex().position() - next);
-        return plane;
-    }
-    
-    float distanceToPlanesAround(const HalfEdge::Vertex &vertex, Vector3 point){
-        float total = 0.0f;
-        Plane plane;
-        for (auto i = vertex.inbound().begin(); i != vertex.inbound().end(); ++i){
-            total += toPlane(i->face(), plane).distanceTo(point);
-        }
-        return total;
-    }
-    
-    void findCollapsePoint(CollapsePoint &target){
-        float a = distanceToPlanesAround(*target.vertB, target.vertA->position());
-        float b = distanceToPlanesAround(*target.vertA, target.vertB->position());
-        Vector3 mid(target.vertA->position() + ((target.vertB->position() - target.vertA->position()) * 0.5f));
-        float c = distanceToPlanesAround(*target.vertB, mid) + distanceToPlanesAround(*target.vertA, mid);
-        if (a < b){
-            if (a < c){
-                target.collapseTo = target.vertA->position();
-                target.cost = a;
-                return;
-            }
-        }
-        else if (b < c){
-            target.collapseTo = target.vertB->position();
-            target.cost = b;
-            return;
-        }
-        target.collapseTo = mid;
-        target.cost = c;
-    }
-    
-    
-}
-    
-void Mesh::decimate(int num){
-    /*typedef HalfEdge<Vector3> HalfEdge;
-    HalfEdges halfEdges(triangles.size());
-    Verts verts(vertices.size());
-    Faces faces(triangles.size() / 3);
-    CollapsePointPool collapsePoints(triangles.size());
-    constructHalfEdgeGraph(*this, halfEdges, faces, verts);
-    std::set<CollapsePoint*, CollapsePointCompare> waiting;
-    std::multimap<Vector3, CollapsePoint*> vertMap;
-    std::set<SplineTest> added;
-    for (auto i = halfEdges.begin(); i != halfEdges.end(); ++i){
-        SplineTest test(*i);
-        if (added.find(test) != added.end()){
-            continue;
-        }
-        added.insert(test);
-        CollapsePoint *cp = collapsePoints.allocate(i->vertex(), i->next->vertex());
-        findCollapsePoint(*cp);
-        vertMap.emplace(cp->vertA->position(), cp);
-        vertMap.emplace(cp->vertB->position(), cp);
-        waiting.insert(cp);
-    }
-    std::vector<CollapsePoint *> update;
-    while (num-- != 0){
-        update.clear();
-        CollapsePoint *cp = *waiting.begin();
-        waiting.erase(waiting.begin());
-        auto j = vertMap.equal_range(cp->vertA->position());
-        for (auto k = j.first; k != j.second; ++k){
-            update.push_back(k->second);
-        }
-        vertMap.erase(j.first, j.second);
-        j = vertMap.equal_range(cp->vertB->position());
-        for (auto k = j.first; k != j.second; ++k){
-            update.push_back(k->second);
-        }
-        vertMap.erase(j.first, j.second);
-        for (auto k = update.begin(); k != update.end(); ++k){
-            waiting.erase(*k);
-        }
-        for (auto k = update.begin(); k != update.end(); ++k){
-            if ((*k)->vertA == cp->vertA){
-                (*k)->vertA = cp->collapseTo;
-            }
-        }
-    }*/
+
+	void splitTriangles(const Plane &divider, std::vector<Triangle3> &in, std::vector<Triangle3> &out) {
+		size_t i = out.size();
+		for (const Triangle3 &tri : in) {
+			tri.slice(divider, out);
+		}
+		while (i != out.size()) {
+			if (out[i].normal().dot(Vector3::unitZ()) < 0.0f) {
+				out[i].flipRotation();
+			}
+			++i;
+		}
+	}
+
+	inline Triangle3 getTriangle(const Mesh &mesh, size_t offset) {
+		return Triangle3(
+			mesh.vertices[mesh.triangles[offset]],
+			mesh.vertices[mesh.triangles[offset + 1]],
+			mesh.vertices[mesh.triangles[offset + 2]]
+		);
+	}
+
+	bool probeZ(const Mesh &mesh, const RefRtree &rtree, RefRtree::Values &rtreeBuffer, const Vector2 &pos, Vector3 &hit) {
+		rtreeBuffer.clear();
+		Spline probe(Vector3(pos.x, pos.y, 1.0f), Vector3(pos.x, pos.y, -1.0f));
+		auto bounds = rtree.containing(pos, rtreeBuffer);
+		/*while (bounds.first != bounds.second) {
+			if (getTriangle(mesh, *bounds.first).intersection(probe, hit)) {
+				return true;
+			}
+			++bounds.first;
+		}*/
+		for (auto i = bounds.first; i != bounds.second; ++i) {
+			Triangle tri(getTriangle(mesh, *bounds.first).toTriangle2());
+			Vector2 shift((tri.findCentroid() - pos).normalized() * FLT_EPSILON);
+			Spline eps(probe + Vector3(shift.x, shift.y, 0.0f));
+			if (getTriangle(mesh, *bounds.first).intersection(/*probe*/eps, hit)) {
+				return true;
+			}
+		}
+		/*for (auto i = bounds.first; i != bounds.second; ++i) {
+			if (getTriangle(mesh, *bounds.first).toTriangle2().contains(pos)) {
+				//getTriangle(mesh, *bounds.first).intersection(probe, hit);
+				return true;
+			}
+		}*/
+		return false;
+	}
 }
 
 void Mesh::load(std::vector<Triangle3> &tris) {
@@ -423,4 +296,51 @@ void Mesh::rasterize(Grid<Vector3> &raster) const {
 		}
 		fillTriangle(raster, tri);
 	}
+}
+
+Mesh::Edges &Mesh::edges(Edges &edges) const {
+	for (size_t i = 2; i < triangles.size(); i += 3) {
+		edges.emplace(triangles[i - 2], triangles[i - 1]);
+		edges.emplace(triangles[i - 1], triangles[i]);
+		edges.emplace(triangles[i], triangles[i - 2]);
+	}
+	return edges;
+}
+
+Mesh &Mesh::slice(const BoundingBox &bounds, Mesh &out) const {
+	std::vector<Triangle3> inside, selection, split;
+	inside.reserve(triangles.size() / 3);
+	for (size_t i = 2; i < triangles.size(); i += 3) {
+		Triangle3 tri(
+			vertices[triangles[i - 2]],
+			vertices[triangles[i - 1]],
+			vertices[triangles[i]]
+		);
+		if (bounds.intersects(tri)) {
+			if (bounds.contains(tri)) {
+				inside.push_back(tri);
+			}
+			else {
+				split.push_back(tri);
+			}
+		}
+	}
+	Plane planes[6];
+	bounds.getPlanes(planes);
+	for (size_t i = 0; i != 6; ++i) {
+		selection.clear();
+		for (const Triangle3 &tri : split) {
+			if (tri.intersects(planes[i])) {
+				selection.push_back(tri);
+			}
+		}
+		splitTriangles(planes[i], selection, split);
+	}
+	for (const Triangle3 &tri : split) {
+		if (bounds.contains(tri)) {
+			inside.push_back(tri);
+		}
+	}
+	out.load(inside);
+	return out;
 }

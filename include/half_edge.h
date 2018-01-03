@@ -265,7 +265,7 @@ namespace motu{
             
             template<class HalfEdgeAllocator, class FaceAllocator>
             Face *erase(HalfEdgeAllocator &hAllocator, FaceAllocator &fAllocator){
-                HalfEdge *floating = nullptr;
+                //HalfEdge *floating = nullptr;
                 Face *face = fAllocator.allocate();
                 face->edge = edge->pair->next;
                 std::vector<std::pair<HalfEdge*, HalfEdge*>> toConnect;
@@ -278,13 +278,54 @@ namespace motu{
                 }
                 for (auto i = toConnect.begin(); i != toConnect.end(); ++i){
                     i->first->next = i->second;
-                    i->mFace = face;
+                    i->second->mFace = i->second->mFace = face;
                 }
                 for (auto i = toDelete.begin(); i != toDelete.end(); ++i){
                     hAllocator.release(*i);
                 }
                 return face;
             }
+
+			template<class HalfEdgeAllocator, class FaceAllocator>
+			void triangulate(HalfEdgeAllocator &hAllocator, FaceAllocator &fAllocator) {
+				std::vector<std::pair<HalfEdge*, HalfEdge*>> toIntersect;
+				HalfEdge *in = nullptr;
+				for (auto i = inbound().begin(); i != inbound().end(); ++i) {
+					for (HalfEdge *edge = i->next; edge != &*i; edge = edge->next) {
+						bool found = false;
+						for (auto j = inbound().begin(); j != inbound().end(); ++j) {
+							if (j->next->mVertex == edge->mVertex) {
+								found = true;
+								break;
+							}
+						}
+						if (!found) {
+							toIntersect.emplace_back(edge->findLast(), edge);
+							if (in == nullptr) {
+								in = &*i;
+							}
+						}
+					}
+				}
+				for (auto i = toIntersect.begin(); i != toIntersect.end(); ++i) {
+					HalfEdge *out = hAllocator.allocate();
+					in->findLast()->next = out;
+					out->pair = hAllocator.allocate();
+					out->pair->pair = out;
+					out->pair->mVertex = i->second->mVertex;
+					out->pair->next = in;
+					out->mVertex = this;
+					out->next = i->second;
+					i->first->next = out->pair;
+					in = out;
+					out->mFace = fAllocator.allocate();
+					out->mFace->edge = out;
+					out->pair->mFace = out->pair->next->mFace;
+				}
+				for (auto i = inbound().begin(); i != inbound().end(); ++i) {
+					i->next->mFace = i->next->next->mFace = i->mFace;
+				}
+			}
         };
         
         HalfEdge *pair, *next;

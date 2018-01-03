@@ -1,3 +1,5 @@
+#include <stack>
+
 #include "triangulated_terrain_graph.h"
 #include "terrain_graph.h"
 #include "raster.h"
@@ -640,4 +642,32 @@ void TriangulatedTerrainGraph::smooth() {
 		i->first->position().y = i->second.y;
 		i->first->data().z = i->second.z;
 	}
+}
+
+Mesh &TriangulatedTerrainGraph::makeManifold(Mesh &mesh) const {
+	std::stack<size_t> perimeter;
+	Vector2 centre(mTriangulation->externalFace().calculateCentroid());
+	size_t middle = mesh.vertices.size();
+	mesh.vertices.emplace_back(centre.x, centre.y, -1.0f);
+	std::map<Vector3, size_t> vertexMap;
+	for (size_t i = 0; i != middle; ++i) {
+		vertexMap.emplace(mesh.vertices[i], i);
+	}
+	for (auto i = mTriangulation->externalFace().halfEdges().begin(); i != mTriangulation->externalFace().halfEdges().end(); ++i) {
+		perimeter.emplace(vertexMap.find(Vector3(i->vertex().position().x, i->vertex().position().y, i->vertex().data().z))->second);
+	}
+	size_t last = perimeter.top();
+	size_t first = last;
+	perimeter.pop();
+	while (!perimeter.empty()) {
+		mesh.triangles.push_back(last);
+		mesh.triangles.push_back(perimeter.top());
+		mesh.triangles.push_back(middle);
+		last = perimeter.top();
+		perimeter.pop();
+	}
+	mesh.triangles.push_back(last);
+	mesh.triangles.push_back(first);
+	mesh.triangles.push_back(middle);
+	return mesh;
 }

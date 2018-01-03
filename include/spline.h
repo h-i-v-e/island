@@ -11,6 +11,7 @@
 
 #include "vector3.h"
 #include "edge.h"
+#include "plane.h"
 
 namespace motu{
     struct Spline{
@@ -26,6 +27,31 @@ namespace motu{
 
 		Vector3 direction() const{
 			return endB - endA;
+		}
+
+		Spline operator + (const Vector3 &vec) const {
+			return Spline(endA + vec, endB + vec);
+		}
+
+		bool intersects(const Plane &plane, Vector3 &at) const {
+			Vector3 dir(direction());
+			float t;
+			if (plane.intersectionTime(endA, dir, t)) {
+				if (t >= 0.0f && t <= 1.0f) {
+					at = endA + (dir * t);
+					return true;
+				}
+			}
+			return false;
+		}
+
+		bool intersects(const Plane &plane) const {
+			Vector3 dir(direction());
+			float t;
+			if (plane.intersectionTime(endA, dir, t)) {
+				return t >= 0.0f && t <= 1.0f;
+			}
+			return false;
 		}
     };
 }

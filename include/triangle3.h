@@ -13,6 +13,7 @@
 #include "vector3.h"
 #include "spline.h"
 #include "plane.h"
+#include "triangle.h"
 
 namespace motu{
     struct Triangle3{
@@ -26,12 +27,20 @@ namespace motu{
             vertices[2] = c;
         }
         
-        Triangle3(const Triangle3 &tri) {
+		Triangle3(const Triangle3 &tri) {
             std::copy(tri.vertices, tri.vertices + 3, vertices);
         }
+
+		Triangle toTriangle2() const{
+			Triangle out;
+			for (size_t i = 0; i != 3; ++i) {
+				out.vertices[i] = vertices[i].toVector2();
+			}
+			return out;
+		}
         
         Vector3 normal() const{
-            return (vertices[1] - vertices[0]).cross(vertices[2] - vertices[0]);
+            return (vertices[1] - vertices[0]).cross(vertices[2] - vertices[0])/*.normalized()*/;
         }
         
         void getSplines(Spline *splines) const{
@@ -62,14 +71,94 @@ namespace motu{
 
 		bool intersection(const Spline &spline, Vector3 &intersection) {
 			Plane plane(vertices[0], normal());
-			if (!plane.intersection(spline.endA, spline.direction(), intersection)) {
-				return false;
+			if (plane.intersection(spline.endA, spline.direction(), intersection)) {
+				/*Vector3 an(Triangle3(vertices[0], vertices[1], intersection).normal().normalized());
+				std::cout << an << " - "  << normal().normalized() << std::endl;*/
+				float a = (vertices[1] - vertices[0]).cross(intersection - vertices[0]).dot(plane.normal),
+					b = (vertices[2] - vertices[1]).cross(intersection - vertices[1]).dot(plane.normal);
+				if ((a < 0.0f && b > 0.0f) || (a > 0.0f && b < 0.0f)){
+					return false;
+				}
+				b = (vertices[0] - vertices[2]).cross(intersection - vertices[2]).dot(plane.normal);
+				return (a > 0.0f && b > 0.0f) || (a < 0.0f && b < 0.0f);
 			}
-			float rotation = (intersection - vertices[0]).cross(vertices[1] - vertices[0]).dot(plane.normal);
-			if ((intersection - vertices[1]).cross(vertices[2] - vertices[1]).dot(plane.normal) != rotation) {
-				return false;
+		}
+
+		bool intersects(const Plane &plane) const{
+			for (int i = 0; i != 3; ++i) {
+				if (Spline(vertices[i], vertices[(i + 1) % 3]).intersects(plane)) {
+					return true;
+				}
 			}
-			return (intersection - vertices[2]).cross(vertices[0] - vertices[2]).dot(plane.normal) == rotation;
+			return false;
+		}
+
+		std::vector<Triangle3> &slice(const Plane &plane, std::vector<Triangle3> &out) const {
+			Spline splines[3];
+			getSplines(splines);
+			std::pair<Vector3, const Spline*> intersection[3];
+			size_t offset = 0;
+			const Vector3 *a, *b, *c, *d, *e;
+			for (int i = 0; i != 3; ++i) {
+				if (splines[i].intersects(plane, intersection[offset].first)) {
+					intersection[offset++].second = splines + i;
+				}
+			}
+			switch (offset) {
+			case 2:
+				if (intersection[0].second->endA == intersection[1].second->endA) {
+					a = &intersection[0].second->endA;
+					b = &intersection[0].first;
+					c = &intersection[0].second->endB;
+					d = &intersection[1].second->endB;
+					e = &intersection[1].first;
+				}
+				else if (intersection[0].second->endA == intersection[1].second->endB) {
+					a = &intersection[0].second->endA;
+					b = &intersection[0].first;
+					c = &intersection[0].second->endB;
+					d = &intersection[1].second->endA;
+					e = &intersection[1].first;
+				}
+				else if (intersection[0].second->endB == intersection[1].second->endA) {
+					a = &intersection[1].second->endA;
+					b = &intersection[1].first;
+					c = &intersection[1].second->endB;
+					d = &intersection[0].second->endA;
+					e = &intersection[0].first;
+				}
+				else if (intersection[0].second->endB == intersection[1].second->endB) {
+					a = &intersection[0].second->endB;
+					b = &intersection[0].first;
+					c = &intersection[0].second->endA;
+					d = &intersection[1].second->endA;
+					e = &intersection[1].first;
+				}
+				out.emplace_back(*a, *b, *e);
+				out.emplace_back(*b, *c, *d);
+				out.emplace_back(*e, *b, *d);
+				break;
+			case 3:
+				if (intersection[0].first == intersection[1].first) {
+					out.emplace_back(intersection[0].second->endA, intersection[2].first, intersection[0].second->endB);
+					out.emplace_back(intersection[1].second->endA, intersection[2].first, intersection[1].second->endB);
+				}
+				else if (intersection[0].first == intersection[2].first) {
+					out.emplace_back(intersection[0].second->endA, intersection[1].first, intersection[0].second->endB);
+					out.emplace_back(intersection[2].second->endA, intersection[1].first, intersection[2].second->endB);
+				}
+				else {
+					out.emplace_back(intersection[1].second->endA, intersection[0].first, intersection[1].second->endB);
+					out.emplace_back(intersection[2].second->endA, intersection[0].first, intersection[2].second->endB);
+				}
+			}
+			return out;
+		}
+
+		Vector3 baricentre() const{
+			Vector3 total(0.0f, 0.0f, 0.0f);
+			for (size_t i = 0; i != 3; total += vertices[i++]);
+			return total / 3.0f;
 		}
     };
     

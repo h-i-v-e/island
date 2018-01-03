@@ -30,7 +30,7 @@ using namespace motu;
 
 namespace{
     float computeShift(const Edge &a, const Edge &b, const Vector2 &src, const Vector2 &dst){
-        return a.direction().normalized().dot(b.normal().normalized()) * (dst - src).magnitude();
+        return a.direction().normalized().dot(b.perp().normalized()) * (dst - src).magnitude();
     }
     
     float zAt(const Rivers::VertexGrid &grid, const Vector2 &vec){
@@ -180,7 +180,7 @@ Rivers::Meshes &Rivers::getMeshesAndCarveRiverBeds(VertexGrid &grid, Meshes &mes
                 bedZ -= riverWidth;
                 //z -= riverWidth * 0.25f;
             }
-            Vector2 bank(edge.normal().normalized() * riverWidth);
+            Vector2 bank(edge.perp().normalized() * riverWidth);
             meshes.back().vertices.emplace_back(vec3(*vert - bank, z));
             meshes.back().vertices.emplace_back(vec3(*vert + bank, z));
             riverBeds.back().emplace_back(vec3(*vert - bank, bedZ));
@@ -192,7 +192,7 @@ Rivers::Meshes &Rivers::getMeshesAndCarveRiverBeds(VertexGrid &grid, Meshes &mes
         float z = depths.find(*vert)->second;
         float bedZ = z - riverWidth;
         //z -= riverWidth;
-        Vector2 bank(edge.normal().normalized() * riverWidth);
+        Vector2 bank(edge.perp().normalized() * riverWidth);
         meshes.back().vertices.emplace_back(vec3(*vert - bank, z));
         meshes.back().vertices.emplace_back(vec3(*vert + bank, z));
         riverBeds.back().emplace_back(vec3(*vert - bank, bedZ));

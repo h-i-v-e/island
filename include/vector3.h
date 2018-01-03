@@ -111,6 +111,30 @@ namespace motu{
         bool operator == (const Vector3 &other) const{
             return x == other.x && y == other.y && z == other.z;
         }
+
+		constexpr bool hasX() const {
+			return x > FLT_EPSILON || x < -FLT_EPSILON;
+		}
+
+		constexpr bool hasY() const {
+			return y > FLT_EPSILON || y < -FLT_EPSILON;
+		}
+
+		constexpr bool hasZ() const {
+			return z > FLT_EPSILON || z < -FLT_EPSILON;
+		}
+
+		static Vector3 unitX() {
+			return Vector3(1.0f, 0.0f, 0.0f);
+		}
+
+		static Vector3 unitY() {
+			return Vector3(0.0f, 1.0f, 0.0f);
+		}
+
+		static Vector3 unitZ() {
+			return Vector3(0.0f, 0.0f, 1.0f);
+		}
         
         static Vector3 zero(){
             return Vector3(0.0f, 0.0f, 0.0f);

@@ -12,6 +12,7 @@
 #include "circle.h"
 #include <limits>
 #include <algorithm>
+#include <vector>
 
 namespace motu{
     class Triangle{
@@ -60,7 +61,7 @@ namespace motu{
             return (aToB.x * bToC.y - aToB.y * bToC.x) > 0.0f;
         }
         
-        bool isShit() const{
+        bool degenerate() const{
             return vertices[0] == vertices[1] || vertices[0] == vertices[2] || vertices[2] == vertices[1];
         }
         
@@ -84,7 +85,7 @@ namespace motu{
             Edge la(sorted[0], sorted[1]), lb(sorted[0], sorted[2]);
             Vector2 intersection;
             Vector2 midA = la.midPoint(), midB = lb.midPoint();
-            if ((Edge (midA, midA + la.normal()).intersection (Edge (midB, midB + lb.normal()), intersection))) {
+            if ((Edge (midA, midA + la.perp()).intersection (Edge (midB, midB + lb.perp()), intersection))) {
                 return intersection;
             } else {
                 return collapsedCentre ();
@@ -117,6 +118,18 @@ namespace motu{
         bool operator != (const Triangle &other) const{
             return vertices[0] != other.vertices[0] && vertices[1] != other.vertices[1] && vertices[2] != other.vertices[2];
         }
+
+		bool operator < (const Triangle &other) const{
+			for (size_t i = 0; i != 3; ++i) {
+				if (vertices[i] < other.vertices[i]) {
+					return true;
+				}
+				else if (other.vertices[i] < vertices[i]) {
+					return false;
+				}
+			}
+			return false;
+		}
         
         bool shares (const Edge &edge) const
         {
@@ -129,6 +142,17 @@ namespace motu{
             }
             return false;
         }
+
+		bool intersects(const Edge &edge) const {
+			Edge edges[3];
+			getEdges(edges);
+			for (int i = 0; i != 3; ++i) {
+				if (edge.intersects(edges[i])) {
+					return true;
+				}
+			}
+			return false;
+		}
         
         bool intersects(const BoundingRectangle &rect) const{
             Edge edges[3];
@@ -141,28 +165,107 @@ namespace motu{
             return false;
         }
         
-        bool contains(const Vector2 &point) const{
-            BoundingRectangle rect(boundingRectangle());
-            if (!rect.contains(point)){
-                return false;
-            }
-            else{
-                Edge testEdge(rect.externalPoint(), point);
-                Edge edges[3];
-                getEdges(edges);
-                int count = 0;
-                for (int i = 0; i != 3; ++i){
-                    if (testEdge.intersects(edges[i])){
-                        ++count;
-                    }
-                }
-                return (count & 1) == 1;
-            }
-        }
+		bool contains(const Vector2 &point) const {
+			/*BoundingRectangle rect(boundingRectangle());
+			if (!rect.contains(point)){
+				return false;
+			}
+			else{
+				Edge testEdge(rect.externalPoint(), point);
+				Edge edges[3];
+				getEdges(edges);
+				int count = 0;
+				for (int i = 0; i != 3; ++i){
+					if (testEdge.intersects(edges[i])){
+						++count;
+					}
+				}
+				return (count & 1) == 1;
+			}*/
+			bool a = Triangle(vertices[0], vertices[1], point).isClockwise();
+			if (a != Triangle(vertices[1], vertices[2], point).isClockwise()) {
+				return false;
+			}
+			return a == Triangle(vertices[2], vertices[0], point).isClockwise();
+		}
+
+		bool fullyWithin(const BoundingRectangle &bounds) const{
+			for (const Vector2 &vert : vertices) {
+				if (!bounds.contains(vert)) {
+					return false;
+				}
+			}
+			return true;
+		}
         
         friend std::ostream &operator<<(std::ostream &out, const Triangle &triangle){
             return out << triangle.vertices[0] << " <- " << triangle.vertices[1] << " <- " << triangle.vertices[2];
         }
+
+		std::vector<Triangle> &slice(const Edge &edge, std::vector<Triangle> &out) const{
+			Edge edges[3];
+			getEdges(edges);
+			std::pair<Vector2, const Edge*> intersection[3];
+			size_t offset = 0;
+			const Vector2 *a, *b, *c, *d, *e;
+			for (int i = 0; i != 3; ++i) {
+				if (edges[i].intersects(edge, intersection[offset].first)) {
+					intersection[offset++].second = edges + i;
+				}
+			}
+			switch (offset) {
+				/*case 1:
+					out.push_back(*this);
+					break;*/
+				case 2:
+					if (intersection[0].second->endA == intersection[1].second->endA) {
+						a = &intersection[0].second->endA;
+						b = &intersection[0].first;
+						c = &intersection[0].second->endB;
+						d = &intersection[1].second->endB;
+						e = &intersection[1].first;
+					}
+					else if (intersection[0].second->endA == intersection[1].second->endB) {
+						a = &intersection[0].second->endA;
+						b = &intersection[0].first;
+						c = &intersection[0].second->endB;
+						d = &intersection[1].second->endA;
+						e = &intersection[1].first;
+					}
+					else if (intersection[0].second->endB == intersection[1].second->endA) {
+						a = &intersection[1].second->endA;
+						b = &intersection[1].first;
+						c = &intersection[1].second->endB;
+						d = &intersection[0].second->endA;
+						e = &intersection[0].first;
+					}
+					else if (intersection[0].second->endB == intersection[1].second->endB) {
+						a = &intersection[0].second->endB;
+						b = &intersection[0].first;
+						c = &intersection[0].second->endA;
+						d = &intersection[1].second->endA;
+						e = &intersection[1].first;
+					}
+					out.emplace_back(*a, *b, *e);
+					out.emplace_back(*b, *c, *d);
+					out.emplace_back(*e, *b, *d);
+					break;
+				case 3:
+					if (intersection[0].first == intersection[1].first) {
+						out.emplace_back(intersection[0].second->endA, intersection[2].first, intersection[0].second->endB);
+						out.emplace_back(intersection[1].second->endA, intersection[2].first, intersection[1].second->endB);
+					}
+					else if (intersection[0].first == intersection[2].first) {
+						out.emplace_back(intersection[0].second->endA, intersection[1].first, intersection[0].second->endB);
+						out.emplace_back(intersection[2].second->endA, intersection[1].first, intersection[2].second->endB);
+					}
+					else {
+						out.emplace_back(intersection[1].second->endA, intersection[0].first, intersection[1].second->endB);
+						out.emplace_back(intersection[2].second->endA, intersection[0].first, intersection[2].second->endB);
+					}
+			}
+			return out;
+		}
     };
 }
 
