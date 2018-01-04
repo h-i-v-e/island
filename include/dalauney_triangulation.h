@@ -14,6 +14,7 @@
 #include "half_edge.h"
 #include "triangle.h"
 #include "brtree.h"
+#include "mesh.h"
 
 namespace motu{
 
@@ -33,6 +34,22 @@ namespace motu{
         typedef IterableObjectPool<Vertex> Vertices;
         
         DalauneyTriangulation(const std::vector<Vector2> &points);
+
+		DalauneyTriangulation(const Mesh &mesh) {
+			mHalfEdges = new HalfEdges(mesh.vertices.size() << 1);
+			mFaces = new Faces(mesh.triangles.size() / 3);
+			mVertices = new Vertices(mesh.vertices.size());
+			VertexMap<Vector2, HalfEdges, Vertices, Faces> builder(mHalfEdges, mVertices, mFaces);
+			for (size_t i = 2; i < mesh.triangles.size(); i += 3) {
+				Triangle tri(
+					mesh.vertices[mesh.triangles[i - 2]].toVector2(),
+					mesh.vertices[mesh.triangles[i - 1]].toVector2(),
+					mesh.vertices[mesh.triangles[i]].toVector2()
+				);
+				builder.addPolygon(tri.vertices, tri.vertices + 3);
+			}
+			mExternalFace = builder.bind();
+		}
         
         ~DalauneyTriangulation(){
             delete mHalfEdges;

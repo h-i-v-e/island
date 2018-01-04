@@ -393,8 +393,20 @@ TriangulatedTerrainGraph::TriangulatedTerrainGraph(const TerrainGraph &graph) {
 
 TriangulatedTerrainGraph::TriangulatedTerrainGraph(const TriangulatedTerrainGraph &graph) {
 	std::map<Vector2, const Triangulation::Vertex*> vertexMap;
-	std::vector<Vector2> vertices;
-	mTriangulation = new Triangulation(copyVertices(vertexMap, *graph.mTriangulation, vertices, NotFlat()));
+	for (auto i = graph.mTriangulation->vertices().begin(); i != graph.mTriangulation->vertices().end(); ++i) {
+		vertexMap.emplace(i->position(), &*i);
+	}
+	{
+		Mesh tesselated;
+		{
+			Mesh mesh;
+			graph.toMesh(mesh);
+			mesh.tesselate(tesselated);
+		}
+		mTriangulation = new Triangulation(tesselated);
+	}
+	/*std::vector<Vector2> vertices;
+	mTriangulation = new Triangulation(copyVertices(vertexMap, *graph.mTriangulation, vertices, NotFlat()));*/
 	setZValues(vertexMap, *mTriangulation);
 }
 
