@@ -27,7 +27,7 @@ namespace motu{
         
         void generateSeasAndLakes(std::default_random_engine &, float waterRatio);
         
-        void generateRivers(int flowThreshold, int tesselations);
+        //void generateRivers(int flowThreshold, int tesselations);
         
         void draw(Raster &raster);
         

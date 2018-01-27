@@ -18,10 +18,24 @@
 #include "raster.h"
 #include "half_edge.h"
 #include "voronoi_graph.h"
-#include "continent.h"
+#include "island.h"
+#include "mesh_decimator.h"
+#include "bounding_box.h"
+#include "rivers.h"
+#include "mesh_edge_map.h"
 
 using namespace motu;
 using namespace std;
+
+uint32_t clamp255(float f) {
+	if (f < -127.0f) {
+		f = -127.0f;
+	}
+	if (f > 127.0f) {
+		f = 127.0f;
+	}
+	return static_cast<uint32_t>(127.0f + f);
+}
 
 struct RandomVector2{
     random_device rd;
@@ -86,26 +100,63 @@ void writePNG(const char* filename, std::vector<unsigned char>& image, unsigned 
     }
 }*/
 
+inline float byteToFloat(uint32_t val, uint32_t shift, float mul) {
+	uint32_t mask = 0xff << shift;
+	return (static_cast<float>((val & mask) >> shift) - 127.5f) * mul;
+}
+
 TEST_CASE("Continent", "Continent"){
     random_device rd;
     default_random_engine rand(rd());
-    Continent continent(rand, 4096, 2, 0.05f);
-    //continent.generateTiles(2);
-    continent.generateSeasAndLakes(rand, 0.5f);
-    Raster raster(1024, 1024);
-    raster.fill(0xffffffff);
-    continent.draw(raster);
+	Island island(rand, 0.5f, 0.05f);
+	Raster raster(2048, 2048);
+	Vector3 sun(0.0f, 0.5f, 1.0f);
+	sun.normalize();
+	float mul = 1.0f / 255.0f, muln = 1.0f / 127.5f;
+	for (size_t y = 0; y != raster.height(); ++y) {
+		for (size_t x = 0; x != raster.width(); ++x) {
+			uint32_t val = island.normalAndOcclusianMap()(x, y);
+			float f = static_cast<float>(val >> 24) * mul;
+			Vector3 normal(byteToFloat(val, 16, muln), byteToFloat(val, 8, muln), byteToFloat(val, 0, muln));
+			f *= sun.dot(normal);
+			f *= 255.0f;
+			if (f < 0.0f) {
+				f = 0.0f;
+			}
+			else if (f > 255.0f) {
+				f = 255.0f;
+			}
+			val = static_cast<uint32_t>(f);
+			raster(x, y) = val | (val << 8) | (val << 16);
+			//raster(x, y) = island.normalAndOcclusianMap()(x, y);
+		}
+	}
+	/*Rivers swap(island.lod(2), MeshEdgeMap(island.lod(2)));
+	Rivers rivers(swap, island.lod(2), island.lod(1), MeshEdgeMap(island.lod(1)));
+	for (const Rivers::River &river : rivers.rivers()) {
+		for (int i = 1; i < river.size(); ++i) {
+			raster.draw(Edge(
+				island.lod(1).vertices[river[i - 1].first].toVector2(),
+				island.lod(1).vertices[river[i].first].toVector2()),
+				0x00000000);
+		}
+	}*/
+
+	//raster.fill(0xffffffff);
+	//.draw(island.lod(1), 0x00000000);
+
+
     int rasterLength = raster.length() * 3;
     std::vector<unsigned char> buffer;
     buffer.reserve(rasterLength);
     const unsigned char *raw = reinterpret_cast<const unsigned char*>(raster.data());
     for (int i = 0, j = raster.length() << 2; i != j; i += 4){
-        buffer.push_back(raw[i]);
-        buffer.push_back(raw[i + 1]);
         buffer.push_back(raw[i + 2]);
+        buffer.push_back(raw[i + 1]);
+        buffer.push_back(raw[i]);
     }
     //std::copy(raw, raw + rasterLength, std::back_inserter(buffer));
-    writePNG("/Users/jerome/test.png", buffer, 1024, 1024);
+    writePNG("/Users/jerome/test.png", buffer, 2048, 2048);
 }
 
 /*template<class Vertex>

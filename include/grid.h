@@ -45,6 +45,10 @@ namespace motu{
         const ValueType *data() const{
             return mData;
         }
+
+		ValueType *data() {
+			return mData;
+		}
     };
 }
 

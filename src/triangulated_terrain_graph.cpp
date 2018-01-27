@@ -1,12 +1,16 @@
 #include <stack>
+#include <unordered_set>
 
 #include "triangulated_terrain_graph.h"
 #include "terrain_graph.h"
 #include "raster.h"
 #include "brtree.h"
 #include "plane.h"
+#include "bounding_box.h"
 
 using namespace motu;
+
+#define SEABED_PLANE_Z -0.002f
 
 namespace {
 	typedef std::map<Vector2, const TerrainGraph::Vertex*> VertexMap;
@@ -46,7 +50,7 @@ namespace {
 				++count;
 			}
 		}
-		vert.data().z = z / count;
+		vert.data().z = count == 0 ? SEABED_PLANE_Z : z / count;
 	}
 
 	template <class VertexMap>
@@ -61,8 +65,8 @@ namespace {
 			}
 		}
 		for (auto i = tri.vertices().begin(); i != tri.vertices().end(); ++i) {
-			if (i->data().z < -0.002f) {
-				i->data().z = -0.002f;
+			if (i->data().z < SEABED_PLANE_Z) {
+				i->data().z = SEABED_PLANE_Z;
 			}
 		}
 	}
@@ -164,19 +168,34 @@ namespace {
 		}
 	}
 
+	/*bool nearlyEqual(float a, float b) {
+		float diff = a - b;
+		return diff <= FLT_EPSILON && diff >= -FLT_EPSILON;
+	}
+
 	struct NotFlat {
-		bool operator()(const Face &face) const {
+
+		bool operator()(const TerrainGraph::Face &face) const {
 			float z = face.halfEdge()->vertex().data().z;
 			for (auto i = face.halfEdge()->next; i != face.halfEdge(); i = i->next) {
-				if (i->vertex().data().z != z) {
+				if (!nearlyEqual(i->vertex().data().z, z)) {
 					return true;
 				}
 			}
 			return false;
 		}
+	};*/
+
+	bool notOnSeabedPlane(const TerrainGraph::Face &face) {
+		for (auto i = face.halfEdges().begin(); i != face.halfEdges().end(); ++i) {
+			if (i->vertex().data().z > SEABED_PLANE_Z) {
+				return true;
+			}
+		}
+		return false;
 	};
 
-	struct All {
+	/*struct All {
 		bool operator()(const TerrainGraph::Face &face) const {
 			return true;
 		}
@@ -194,6 +213,32 @@ namespace {
 				continue;
 			}
 			vertices.push_back(i->calculateCentroid());
+		}
+		return vertices;
+	}*/
+
+	std::vector<Vector2> copyVertices(VertexMap &vertexMap, const TerrainGraph &graph, std::vector<Vector2> &vertices) {
+		size_t reserve = graph.vertices().size() + graph.faces().size();
+		vertices.reserve(reserve);
+		std::unordered_set<const TerrainGraph::Vertex *> in;
+		in.reserve(reserve);
+		for (auto i = graph.faces().begin(); i != graph.faces().end(); ++i) {
+			if (&*i == &graph.externalFace()) {
+				/*for (auto j = i->halfEdges().begin(); j != i->halfEdges().end(); ++j) {
+					in.insert(j->mVertex);
+				}*/
+				continue;
+			}
+			if (notOnSeabedPlane(*i)) {
+				for (auto j = i->halfEdges().begin(); j != i->halfEdges().end(); ++j) {
+					in.insert(j->mVertex);
+				}
+			}
+			vertices.push_back(i->calculateCentroid());
+		}
+		for (auto i = in.begin(); i != in.end(); ++i) {
+			vertices.push_back((*i)->position());
+			vertexMap.emplace((*i)->position(), *i);
 		}
 		return vertices;
 	}
@@ -387,7 +432,7 @@ namespace {
 TriangulatedTerrainGraph::TriangulatedTerrainGraph(const TerrainGraph &graph) {
 	std::map<Vector2, const TerrainGraph::Vertex*> vertexMap;
 	std::vector<Vector2> vertices;
-	mTriangulation = new Triangulation(copyVertices(vertexMap, graph, vertices, All()));
+	mTriangulation = new Triangulation(copyVertices(vertexMap, graph, vertices/*, NotSeaPlane()*/));
 	setZValues(vertexMap, *mTriangulation);
 }
 
@@ -400,6 +445,10 @@ TriangulatedTerrainGraph::TriangulatedTerrainGraph(const TriangulatedTerrainGrap
 		Mesh tesselated;
 		{
 			Mesh mesh;
+			/*graph.toMesh(tesselated);
+			tesselated.slice(BoundingBox(0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f), mesh);
+			tesselated.clear();
+			mesh.tesselate(tesselated);*/
 			graph.toMesh(mesh);
 			mesh.tesselate(tesselated);
 		}

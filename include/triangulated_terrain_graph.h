@@ -77,7 +77,7 @@ namespace motu {
 			}
 		};
 
-		void fillLastList(LastList &, float thresholdStandardDeviations = 3.0f);
+		void fillLastList(LastList &, float thresholdStandardDeviations = 2.5f);
 
 		void fillLastListInterpolated(RiverSections &, LastList &);
 

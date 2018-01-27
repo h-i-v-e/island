@@ -63,6 +63,18 @@ namespace motu{
 			}
 			return endB < spline.endB;
 		}
+
+		bool operator == (const Spline &spline) const{
+			return endA == spline.endA && endB == spline.endB;
+		}
+
+		bool operator != (const Spline &spline) const {
+			return endA != spline.endA || endB != spline.endB;
+		}
+
+		size_t hash() const {
+			return (endA.hash() * 7) ^ (endB.hash() * 3);
+		}
     };
 }
 

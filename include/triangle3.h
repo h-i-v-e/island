@@ -93,10 +93,20 @@ namespace motu{
 			return false;
 		}
 
+		static void emplaceWithRotation(const Vector3 &normal, const Vector3 &a, const Vector3 &b, const Vector3 &c, std::vector<Triangle3> &out) {
+			if ((b - a).cross(c - b).dot(normal) < 0.0f) {
+				out.emplace_back(c, b, a);
+			}
+			else {
+				out.emplace_back(a, b, c);
+			}
+		}
+
 		std::vector<Triangle3> &slice(const Plane &plane, std::vector<Triangle3> &out) const {
 			Spline splines[3];
 			getSplines(splines);
 			std::pair<Vector3, const Spline*> intersection[3];
+			Vector3 normal(this->normal());
 			size_t offset = 0;
 			const Vector3 *a, *b, *c, *d, *e;
 			for (int i = 0; i != 3; ++i) {
@@ -134,22 +144,22 @@ namespace motu{
 					d = &intersection[1].second->endA;
 					e = &intersection[1].first;
 				}
-				out.emplace_back(*a, *b, *e);
-				out.emplace_back(*b, *c, *d);
-				out.emplace_back(*e, *b, *d);
+				emplaceWithRotation(normal, *a, *b, *e, out);
+				emplaceWithRotation(normal, *b, *c, *d, out);
+				emplaceWithRotation(normal, *e, *b, *d, out);
 				break;
 			case 3:
 				if (intersection[0].first == intersection[1].first) {
-					out.emplace_back(intersection[0].second->endA, intersection[2].first, intersection[0].second->endB);
-					out.emplace_back(intersection[1].second->endA, intersection[2].first, intersection[1].second->endB);
+					emplaceWithRotation(normal, intersection[0].second->endA, intersection[2].first, intersection[0].second->endB, out);;
+					emplaceWithRotation(normal, intersection[1].second->endA, intersection[2].first, intersection[1].second->endB, out);
 				}
 				else if (intersection[0].first == intersection[2].first) {
-					out.emplace_back(intersection[0].second->endA, intersection[1].first, intersection[0].second->endB);
-					out.emplace_back(intersection[2].second->endA, intersection[1].first, intersection[2].second->endB);
+					emplaceWithRotation(normal, intersection[0].second->endA, intersection[1].first, intersection[0].second->endB, out);
+					emplaceWithRotation(normal, intersection[2].second->endA, intersection[1].first, intersection[2].second->endB, out);
 				}
 				else {
-					out.emplace_back(intersection[1].second->endA, intersection[0].first, intersection[1].second->endB);
-					out.emplace_back(intersection[2].second->endA, intersection[0].first, intersection[2].second->endB);
+					emplaceWithRotation(normal, intersection[1].second->endA, intersection[0].first, intersection[1].second->endB, out);
+					emplaceWithRotation(normal, intersection[2].second->endA, intersection[0].first, intersection[2].second->endB, out);
 				}
 			}
 			return out;

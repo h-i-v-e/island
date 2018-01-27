@@ -84,6 +84,10 @@ namespace motu{
         const Face &externalFace() const{
             return *mExternalFace;
         }
+
+		Face &externalFace() {
+			return *mExternalFace;
+		}
         
     private:
         HalfEdges *mHalfEdges;

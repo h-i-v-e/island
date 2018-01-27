@@ -1,12 +1,20 @@
 add_library(motu
-	continent.cpp
-	erosian_map.cpp
+	#continent.cpp
+	island.cpp
+	#erosian_map.cpp
 	lodepng.cpp
 	mesh.cpp
+	mesh_edge_map.cpp
+	mesh_triangle_map.cpp
 	raster.cpp
-	river.cpp
+	#river.cpp
 	simplex_noise.cpp
-	terrain_graph.cpp
-	triangulated_terrain_graph.cpp
-	mesh_decimator.cpp
+	terrain.cpp
+	hydrolic_erosian.cpp
+	rivers.cpp
+	#terrain_graph.cpp
+	#triangulated_terrain_graph.cpp
+	#mesh_decimator.cpp
+	#unity.cpp
 )
+#set_target_properties(motu PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/libs")

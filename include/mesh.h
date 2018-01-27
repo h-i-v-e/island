@@ -22,7 +22,7 @@ namespace motu{
     struct Mesh{
         typedef std::vector<Vector3> Vertices;
         typedef std::vector<Vector3> Normals;
-        typedef std::vector<size_t> Triangles;
+        typedef std::vector<uint32_t> Triangles;
 		
 		struct Edge : public std::pair<size_t, size_t> {
 			Edge(size_t a, size_t b) : std::pair<size_t, size_t>(a, b) {}
@@ -78,6 +78,19 @@ namespace motu{
 		Mesh &slice(const BoundingBox &bounds, Mesh &out) const;
 
 		Mesh &tesselate(Mesh &out) const;
+
+		template<class VertexAllocator, class HalfEdgeAllocator, class FaceAllocator>
+		typename FaceAllocator::ObjectType *createHalfEdgeGraph(VertexAllocator &vertexAllocator, HalfEdgeAllocator &halfEdgeAllocator, FaceAllocator &faceAllocator) const{
+			VertexMap<Vector3, HalfEdgeAllocator, VertexAllocator, FaceAllocator> vmap(&halfEdgeAllocator, &vertexAllocator, &faceAllocator);
+			Vector3 tri[3];
+			for (size_t i = 0; i < triangles.size();) {
+				for (size_t j = 0; j != 3; ++j) {
+					tri[j] = vertices[triangles[i++]];
+				}
+				vmap.addPolygon(tri, tri + 3);
+			}
+			return vmap.bind();
+		}
     };
 }
 

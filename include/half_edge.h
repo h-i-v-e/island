@@ -432,8 +432,7 @@ namespace motu{
     
     template<class VectorType, class FaceData, class VertexData>
     VectorType HalfEdge<VectorType, FaceData, VertexData>::Face::calculateCentroid() const{
-        VectorType total;
-        total.zero();
+		VectorType total(VectorType::zero());
         float count = 0.0f;
         const HalfEdge *next = edge;
         do {

@@ -38,12 +38,12 @@ namespace motu{
             std::vector<Vector2> vertexBuffer;
             VertexMap<Vector2, HalfEdges, Vertices, Faces> builder(&mHalfEdges, &mVertices, &mFaces);
             for (Itr i = begin; i != end; ++i){
-                if (visited.find(i->vertex().position()) != visited.end()){
+                if (visited.find(i->/*vertex().*/position()) != visited.end()){
                     continue;
                 }
-                visited.insert(i->vertex().position());
+                visited.insert(i->/*vertex().*/position());
                 vertexBuffer.clear();
-                for (auto &j : i->vertex().inbound()){
+                for (auto &j : i->/*vertex().*/inbound()){
                     vertexBuffer.push_back(GetCircumcircleCentre(j));
                 }
                 builder.addPolygon(vertexBuffer.begin(), vertexBuffer.end());
@@ -78,6 +78,10 @@ namespace motu{
         const Face &externalFace() const{
             return *mExternalFace;
         }
+
+		Face &externalFace() {
+			return *mExternalFace;
+		}
         
     private:
         HalfEdges mHalfEdges;

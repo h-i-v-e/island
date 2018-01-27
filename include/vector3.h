@@ -10,6 +10,7 @@
 #define vector3_h
 
 #include <cmath>
+#include <functional>
 #include "vector2.h"
 
 namespace motu{
@@ -112,6 +113,10 @@ namespace motu{
             return x == other.x && y == other.y && z == other.z;
         }
 
+		bool operator != (const Vector3 &other) const {
+			return x != other.x || y != other.y || z != other.z;
+		}
+
 		constexpr bool hasX() const {
 			return x > FLT_EPSILON || x < -FLT_EPSILON;
 		}
@@ -142,6 +147,10 @@ namespace motu{
 
 		friend std::ostream &operator<<(std::ostream &out, const Vector3 &vec) {
 			return out << "Vector3(" << vec.x << ", " << vec.y << ", " << vec.z << ')';
+		}
+
+		size_t hash() const {
+			return (hashFloat(x) * 7) ^ (hashFloat(y) * 11) ^ (hashFloat(z) * 3);
 		}
     };
 }

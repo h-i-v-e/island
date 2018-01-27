@@ -12,6 +12,7 @@
 #include <cmath>
 #include <iostream>
 #include "constants.h"
+#include "util.h"
 
 namespace motu {
     struct Vector2{
@@ -19,9 +20,8 @@ namespace motu {
         
         Vector2(float x, float y) : x(x), y(y){}
         
-        Vector2 &zero(){
-            x = y = 0.0f;
-            return *this;
+        static Vector2 zero(){
+			return Vector2(0.0f, 0.0f);
         }
         
         const Vector2 &operator()(float x, float y){
@@ -106,6 +106,10 @@ namespace motu {
         friend std::ostream &operator<<(std::ostream &o, const Vector2 &vec){
             return o << "Vector2(" << vec.x << ", " << vec.y << ')';
         }
+
+		size_t hash() const {
+			return (hashFloat(x) * HASH_PRIME_A) ^ (hashFloat(y) * HASH_PRIME_B);
+		}
     };
 }
 

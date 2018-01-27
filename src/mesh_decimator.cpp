@@ -6,18 +6,21 @@
 #include "mesh_decimator.h"
 #include "object_pool.h"
 #include <memory>
+#include <unordered_map>
 
 using namespace motu;
 
 namespace {
+	typedef std::unordered_map<uint32_t, uint32_t> CounterMap;
+
 	struct MeshVertex {
 		Vector3 position;
 		std::vector<uint32_t> triangles;
-		//bool edge;
+		bool edge;
 
 		MeshVertex(const Vector3 &pos) : position(pos) {}
 
-		/*void setEdge(const Mesh &mesh, std::map<uint32_t, uint32_t> &counters) {
+		void setEdge(const Mesh &mesh, CounterMap &counters) {
 			counters.clear();
 			for (uint32_t tri : triangles) {
 				for (uint32_t i = 0; i != 3; ++i) {
@@ -38,7 +41,7 @@ namespace {
 				}
 			}
 			edge = false;
-		}*/
+		}
 	};
 
 	struct CollapsePoint {
@@ -116,9 +119,9 @@ namespace {
 		VertexPairs added;
 		std::vector<MeshVertex> vertices;
 		Mesh *mesh;
-		float minAngle;
+		float maxAngle;
 
-		MeshMap(Mesh &mesh, float minAngle) : mesh(&mesh), minAngle(cosf(minAngle * acos(-1) / 180.0)) {
+		MeshMap(Mesh &mesh, float minAngle) : mesh(&mesh), maxAngle(acos(-1) * 0.5f) {
 			vertices.reserve(mesh.vertices.size());
 			for (const Vector3 &vec : mesh.vertices) {
 				vertices.emplace_back(vec);
@@ -132,10 +135,10 @@ namespace {
 					}
 				}
 			}
-			/*std::map<uint32_t, uint32_t> counters;
+			CounterMap counters;
 			for (MeshVertex &vert : vertices) {
 				vert.setEdge(mesh, counters);
-			}*/
+			}
 			for (size_t i = 2; i < mesh.triangles.size(); i += 3) {
 				addCollapsePoints(i - 2);
 			}
@@ -180,7 +183,7 @@ namespace {
 		}
 
 		constexpr bool validAngle(float cos) const{
-			return cos <= minAngle && cos >= -minAngle;
+			return cos <= maxAngle && cos >= -maxAngle;
 		}
 
 		bool validTriangle(uint32_t t1, uint32_t t2, uint32_t t3) const{
@@ -195,11 +198,11 @@ namespace {
 
 		void addCollapsePoints(uint32_t triangle) {
 			uint32_t a = mesh->triangles[triangle], b = mesh->triangles[triangle + 1], c = mesh->triangles[triangle + 2];
-			//if (validTriangle(a, b, c)) {
+			if (validTriangle(a, b, c)) {
 				addCollapsePoint(VertexPair(a, b));
 				addCollapsePoint(VertexPair(b, c));
 				addCollapsePoint(VertexPair(c, a));
-			//}
+			}
 		}
 
 		void replace(uint32_t old, uint32_t nw) {

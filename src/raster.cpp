@@ -125,9 +125,9 @@ void Raster::draw(const Mesh &mesh, uint32_t colour) {
 		const Vector3 &a = mesh.vertices[mesh.triangles[i - 2]];
 		const Vector3 &b = mesh.vertices[mesh.triangles[i - 1]];
 		const Vector3 &c = mesh.vertices[mesh.triangles[i]];
-		draw(Edge(a.x, a.y, b.x, b.y), 0x00000000);
-		draw(Edge(b.x, b.y, c.x, c.y), 0x00000000);
-		draw(Edge(c.x, c.y, a.x, a.y), 0x00000000);
+		draw(Edge(a.x, a.y, b.x, b.y), colour);
+		draw(Edge(b.x, b.y, c.x, c.y), colour);
+		draw(Edge(c.x, c.y, a.x, a.y), colour);
 	}
 }
 
