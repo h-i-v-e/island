@@ -23,6 +23,8 @@
 #include "bounding_box.h"
 #include "rivers.h"
 #include "mesh_edge_map.h"
+#include "colour.h"
+#include "sea_erosian.h"
 
 using namespace motu;
 using namespace std;
@@ -100,7 +102,8 @@ void writePNG(const char* filename, std::vector<unsigned char>& image, unsigned 
     }
 }*/
 
-inline float byteToFloat(uint32_t val, uint32_t shift, float mul) {
+inline float byteToFloat(uint32_t val, uint32_t shift) {
+	static float mul = 1.0f / 127.5f;
 	uint32_t mask = 0xff << shift;
 	return (static_cast<float>((val & mask) >> shift) - 127.5f) * mul;
 }
@@ -108,16 +111,22 @@ inline float byteToFloat(uint32_t val, uint32_t shift, float mul) {
 TEST_CASE("Continent", "Continent"){
     random_device rd;
     default_random_engine rand(rd());
-	Island island(rand, 0.5f, 0.05f);
+	Island::Options options;
+	options.pallete.cliff = Vector3(0.9f, 0.9f, 0.9f);
+	options.pallete.sand = Vector3(1.0f, 0.95f, 0.9f);
+	options.pallete.grass = Vector3(0.5f, 1.0f, 0.35f);
+	options.pallete.mountain = Vector3(1.0f, 0.9f, 0.25f);
+	Island island(rand, options);
+	/*Grid<float> heightMap(2048, 2048);
+	island.lod(2).rasterize(heightMap);*/
 	Raster raster(2048, 2048);
 	Vector3 sun(0.0f, 0.5f, 1.0f);
 	sun.normalize();
-	float mul = 1.0f / 255.0f, muln = 1.0f / 127.5f;
+	/*float mul = 1.0f / 255.0f, muln = 1.0f / 127.5f, seaMul = 1.0f / 0.002f;
 	for (size_t y = 0; y != raster.height(); ++y) {
 		for (size_t x = 0; x != raster.width(); ++x) {
-			uint32_t val = island.normalAndOcclusianMap()(x, y);
-			float f = static_cast<float>(val >> 24) * mul;
-			Vector3 normal(byteToFloat(val, 16, muln), byteToFloat(val, 8, muln), byteToFloat(val, 0, muln));
+			Vector3 normal = island.normalMap()(x, y);
+			float f = island.occlusianMap()(x, y) * mul;
 			f *= sun.dot(normal);
 			f *= 255.0f;
 			if (f < 0.0f) {
@@ -126,25 +135,56 @@ TEST_CASE("Continent", "Continent"){
 			else if (f > 255.0f) {
 				f = 255.0f;
 			}
-			val = static_cast<uint32_t>(f);
+			float height = heightMap(x, y);
+			if (height < 0.0f) {
+				height = (0.002f + height) * seaMul;
+				if (height < 0.0f) {
+					height = 0.0f;
+				}
+				f *= height * 0.5f;
+			}
+			uint32_t val = static_cast<uint32_t>(f);
 			raster(x, y) = val | (val << 8) | (val << 16);
-			//raster(x, y) = island.normalAndOcclusianMap()(x, y);
-		}
-	}
-	/*Rivers swap(island.lod(2), MeshEdgeMap(island.lod(2)));
-	Rivers rivers(swap, island.lod(2), island.lod(1), MeshEdgeMap(island.lod(1)));
-	for (const Rivers::River &river : rivers.rivers()) {
-		for (int i = 1; i < river.size(); ++i) {
-			raster.draw(Edge(
-				island.lod(1).vertices[river[i - 1].first].toVector2(),
-				island.lod(1).vertices[river[i].first].toVector2()),
-				0x00000000);
 		}
 	}*/
-
-	//raster.fill(0xffffffff);
-	//.draw(island.lod(1), 0x00000000);
-
+	/*Island::NormalAndOcclusianMap nom(2048, 2048);
+	island.normalAndOcclusianMap(2, nom);*/
+	Grid<Vector3> normals(2048, 2048);
+	island.lod(2).rasterizeNormalsOnly(normals);
+	static float occlusianMul = 1.0f / 255.0f;
+	for (int i = 0, j = 2048 * 2048; i != j;  ++i) {
+		//raster.data()[i] = nom.data()[i];
+		uint32_t nac = island.normalAndOcclusianMap().data()[i];
+		Vector3 normal(byteToFloat(nac, 16), byteToFloat(nac, 8), byteToFloat(nac, 0));
+		normal = (normal + normals.data()[i]) * 0.5f;
+		//const Vector3 &normal = normals.data()[i];
+		float occlusian = (nac >> 24) * occlusianMul;
+		Vector3 colour = toColourV3(island.albedoMap().data()[i]) * sun.dot(normal) * occlusian;
+		raster.data()[i] = toColour32(colour);
+	}
+	
+	/*Coastlines coastlines;
+	mapCoastlines(island.lod(2), coastlines);
+	for (const auto &i : coastlines) {
+		for (int j = 1; j < i->size(); ++j) {
+			/*int triangle = (*i)[j].second;
+			Triangle tri(
+				island.lod(2).vertices[island.lod(2).triangles[triangle]].asVector2(),
+				island.lod(2).vertices[island.lod(2).triangles[triangle + 1]].asVector2(),
+				island.lod(2).vertices[island.lod(2).triangles[triangle + 2]].asVector2()
+			);*/
+			/*Edge edges[3];
+			tri.getEdges(edges);
+			for (int i = 0; i != 3; ++i) {
+				raster.draw(edges[i], 0x0000ff);
+			}*/
+			//raster.draw(Edge(island.lod(2).vertices[(*i)[j - 1].first].asVector2(), tri.findCentroid()), 0x0000ff);
+			/*if ((*i)[j].second != -1) {
+				raster.draw(Edge(island.lod(2).vertices[(*i)[j].first].asVector2(), island.lod(2).vertices[(*i)[j].second].asVector2()), 0xff0000);
+			}
+			raster.draw(Edge(island.lod(2).vertices[(*i)[j - 1].first].asVector2(), island.lod(2).vertices[(*i)[j].first].asVector2()), 0xff0000);
+		}
+	}*/
 
     int rasterLength = raster.length() * 3;
     std::vector<unsigned char> buffer;

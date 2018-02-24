@@ -9,15 +9,16 @@
 #ifndef brtree_h
 #define brtree_h
 
-#include "bounding_rectangle.h"
-#include "object_pool.h"
 #include <vector>
 
+#include "object_pool.h"
+
 namespace motu{
-    template<class ValueType>
+    template<class Bounds, class ValueType>
     class BRTree{
     public:
         typedef std::vector<const ValueType*> Values;
+		typedef typename Bounds::VectorType VectorType;
         
         class const_iterator{
         private:
@@ -55,13 +56,13 @@ namespace motu{
     private:
         struct Node;
         
-        inline Node *allocate(const BoundingRectangle &bounds, const ValueType &value, Node *parent);
+        inline Node *allocate(const Bounds &bounds, const ValueType &value, Node *parent);
         
         inline void release(Node *node);
         
         struct Node{
             Node *left, *right, *parent;
-            BoundingRectangle totalBounds, valueBounds;
+            Bounds totalBounds, valueBounds;
             ValueType value;
             
             Node():left(nullptr), right(nullptr), parent(nullptr){
@@ -69,10 +70,10 @@ namespace motu{
                 valueBounds.clear();
             }
             
-            Node(const BoundingRectangle &bounds, const ValueType &value, Node *parent) :
+            Node(const Bounds &bounds, const ValueType &value, Node *parent) :
             left(nullptr), right(nullptr),  parent(parent), totalBounds(bounds), valueBounds(bounds), value(value){}
             
-            Node *createChild(BRTree &tree, const BoundingRectangle &bounds, const ValueType &value){
+            Node *createChild(BRTree &tree, const Bounds &bounds, const ValueType &value){
                 if (bounds.area() > valueBounds.area()){
                     Node *node = tree.allocate(valueBounds, this->value, this);
                     valueBounds = bounds;
@@ -99,7 +100,7 @@ namespace motu{
                 }
             }
             
-            void intersecting(const BoundingRectangle &bounds, Values &values) const{
+            void intersecting(const Bounds &bounds, Values &values) const{
                 if ((!valueBounds.empty()) && valueBounds.intersects(bounds)){
                     values.push_back(&value);
                 }
@@ -111,7 +112,7 @@ namespace motu{
                 }
             }
             
-            void containing(const Vector2 &pos, Values &values) const{
+            void containing(const VectorType &pos, Values &values) const{
                 if ((!valueBounds.empty()) && valueBounds.contains(pos)){
                     values.push_back(&value);
                 }
@@ -149,7 +150,7 @@ namespace motu{
                 return deepest;
             }
             
-            void addDown(BRTree &tree, const BoundingRectangle &bounds, const ValueType &value){
+            void addDown(BRTree &tree, const Bounds &bounds, const ValueType &value){
                 if (!left){
                     left = tree.allocate(bounds, value, this);
                 }
@@ -176,7 +177,7 @@ namespace motu{
                 }
             }
             
-            void add(BRTree &tree, const BoundingRectangle &bounds, const ValueType &value){
+            void add(BRTree &tree, const Bounds &bounds, const ValueType &value){
                 if (valueBounds.empty()){
                     totalBounds = valueBounds = bounds;
                     this->value = value;
@@ -212,7 +213,7 @@ namespace motu{
                 recomputeBounds();
             }
             
-            bool remove(BRTree &tree, const BoundingRectangle &bounds, const ValueType &value){
+            bool remove(BRTree &tree, const Bounds &bounds, const ValueType &value){
                 if (this->value == value){
                     if (left){
                         if (right && right->valueBounds.area() > left->valueBounds.area()){
@@ -256,11 +257,11 @@ namespace motu{
             root = objectPool.allocate();
         }
         
-        void add(const BoundingRectangle &bounds, const ValueType &value){
+        void add(const Bounds &bounds, const ValueType &value){
             root->add(*this, bounds, value);
         }
         
-        bool remove(const BoundingRectangle &bounds, const ValueType &value){
+        bool remove(const Bounds &bounds, const ValueType &value){
             return root->remove(*this, bounds, value);
         }
         
@@ -268,13 +269,13 @@ namespace motu{
             return root->getDepth(0);
         }
                                 
-        std::pair<const_iterator, const_iterator> intersecting(const BoundingRectangle &bounds, Values &buf) const{
+        std::pair<const_iterator, const_iterator> intersecting(const Bounds &bounds, Values &buf) const{
             buf.clear();
             root->intersecting(bounds, buf);
             return std::make_pair(const_iterator(buf.begin()), const_iterator(buf.end()));
         }
         
-        std::pair<const_iterator, const_iterator> containing(const Vector2 &pos, Values &buf) const{
+        std::pair<const_iterator, const_iterator> containing(const VectorType &pos, Values &buf) const{
             buf.clear();
             root->containing(pos, buf);
             return std::make_pair(const_iterator(buf.begin()), const_iterator(buf.end()));
@@ -287,13 +288,13 @@ namespace motu{
         }
     };
     
-    template<class ValueType>
-    typename BRTree<ValueType>::Node *BRTree<ValueType>::allocate(const BoundingRectangle &bounds, const ValueType &value, Node *parent){
+    template<class Bounds, class ValueType>
+    typename BRTree<Bounds, ValueType>::Node *BRTree<Bounds, ValueType>::allocate(const Bounds &bounds, const ValueType &value, Node *parent){
         return objectPool.allocate(bounds, value, parent);
     }
     
-    template<class ValueType>
-    void BRTree<ValueType>::release(Node *node){
+    template<class Bounds, class ValueType>
+    void BRTree<Bounds, ValueType>::release(Node *node){
         objectPool.release(node);
     }
 }

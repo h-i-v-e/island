@@ -214,12 +214,6 @@ namespace motu{
                 BaseInboundHalfEdgeIterator(typename HalfEdgeIteratorBase<Const>::incremented_type edge, bool incremented) : HalfEdgeIteratorBase<Const>(edge, incremented){}
                 
                 BaseInboundHalfEdgeIterator &operator++(){
-                    /*if (HalfEdgeIteratorBase<Const>::first->pair){
-                        HalfEdgeIteratorBase<Const>::first = HalfEdgeIteratorBase<Const>::first->pair->next;
-                    }
-                    else{
-                        HalfEdgeIteratorBase<Const>::first = nullptr;
-                    }*/
                     HalfEdgeIteratorBase<Const>::first = HalfEdgeIteratorBase<Const>::first->pair->next;
                     HalfEdgeIteratorBase<Const>::incremented = true;
                     return *this;
@@ -265,7 +259,6 @@ namespace motu{
             
             template<class HalfEdgeAllocator, class FaceAllocator>
             Face *erase(HalfEdgeAllocator &hAllocator, FaceAllocator &fAllocator){
-                //HalfEdge *floating = nullptr;
                 Face *face = fAllocator.allocate();
                 face->edge = edge->pair->next;
                 std::vector<std::pair<HalfEdge*, HalfEdge*>> toConnect;
@@ -512,29 +505,9 @@ namespace motu{
                     std::cout << "Missing vertex" << std::endl;
                     exit(1);
                 }
-                /*if (outsideEdges.find((*i)->vertex().position()) == outsideEdges.end()){
-                    std::cout << "Missing vertex" << std::endl;
-                    exit(1);
-                }
-                (*i)->pair->next = outsideEdges.find((*i)->vertex().position())->second;*/
                 (*i)->pair->mFace = face;
                 face->edge = (*i)->pair;
             }
-            //----------------
-            std::cout << "Checking external face" << std::endl;
-            int count = 0;
-            for (auto i = face->halfEdges().begin(); i != face->halfEdges().end(); ++i){
-                ++count;
-            }
-            if (count != externalEdges.size()){
-                std::cout << "Bugger " << count << std::endl;
-                //exit(1);
-            }
-            std::cout << "Found " << count << " external edges" << std::endl;
-            //-------------------
-			if (face->halfEdge() == nullptr) {
-				exit(1);
-			}
             return face;
         }
         

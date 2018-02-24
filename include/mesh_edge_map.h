@@ -18,13 +18,13 @@ namespace motu {
 			delete[] vertices;
 		}
 
-		std::pair<const uint32_t*, const uint32_t*> vertex(uint32_t offset) const {
-			const std::pair<uint32_t, uint32_t> &vert = vertices[offset];
+		std::pair<const int*, const int*> vertex(int offset) const {
+			const std::pair<int, int> &vert = vertices[offset];
 			return std::make_pair(neighbourBuffer + vert.first, neighbourBuffer + vert.second);
 		}
 	private:
-		uint32_t * neighbourBuffer;
-		std::pair<uint32_t, uint32_t> *vertices;
+		int * neighbourBuffer;
+		std::pair<int, int> *vertices;
 	};
 }
 

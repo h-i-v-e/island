@@ -6,12 +6,17 @@
 
 #include "island.h"
 #include "noise_layer.h"
-//#include "triangulated_terrain_graph.h"
 #include "bounding_box.h"
-#include "terrain.h"
+//#include "terrain.h"
+#include "dalauney.h"
 #include "hydrolic_erosian.h"
 #include "mesh_edge_map.h"
 #include "rivers.h"
+#include "mesh_triangle_map.h"
+#include "matrix4.h"
+#include "colour.h"
+#include "raster.h"
+#include "sea_erosian.h"
 
 using namespace motu;
 
@@ -23,55 +28,36 @@ namespace {
 		2, -8, 4, -2, 8, 2
 	};
 
-	/*struct FaceData {
-		bool sea;
-	};
-
-	struct VertexData;
-
-	typedef typename motu::HalfEdge<Vector3, FaceData, VertexData> HalfEdge;
-	typedef typename HalfEdge::Vertex Vertex;
-	typedef typename HalfEdge::Face Face;
-	typedef typename IterableObjectPool<HalfEdge> HalfEdges;
-	typedef typename IterableObjectPool<Vertex> Vertices;
-	typedef typename IterableObjectPool<Face> Faces;
-
-	struct VertexData {
-		Vector3 normal;
-		float z, seaDistance, landDistance;
-		int flow;
-		Vertex *down;
-		bool cliff;
-
-		VertexData() : z(0.0f), flow(0), down(nullptr), cliff(false) {}
-	};*/
-
-	void MapSea(const Terrain::HalfEdge &perimeter, const std::vector<bool> &data, std::unordered_set<int> &sea) {
-		std::stack<const Terrain::Face*> unvisited;
-		unvisited.push(&perimeter.face());
+	void MapSea(const Mesh &mesh, const MeshEdgeMap &edges, const std::vector<bool> &data, std::unordered_set<int> &sea) {
+		std::stack<int> unvisited;
+		Mesh::PerimeterSet perimeter;
+		mesh.getPerimeterSet(perimeter);
+		for (int i : perimeter) {
+			unvisited.push(i);
+		}
 		while (!unvisited.empty()) {
-			const Terrain::Face *next(unvisited.top());
+			int vert = unvisited.top();
 			unvisited.pop();
-			for (const Terrain::HalfEdge &edge : next->halfEdges()) {
-				if (edge.pair) {
-					Terrain::Face *face(&edge.pair->face());
-					if (data[face->data()] && sea.find(face->data()) == sea.end()) {
-						sea.insert(face->data());
-						unvisited.push(face);
+			auto neighbours = edges.vertex(vert);
+			while (neighbours.first != neighbours.second) {
+				if (data[*neighbours.first]){
+					auto i = sea.find(*neighbours.first);
+					if (i == sea.end()) {
+						sea.emplace_hint(i, *neighbours.first);
+						unvisited.push(*neighbours.first);
 					}
 				}
+				++neighbours.first;
 			}
 		}
 	}
 
-	void RemoveLakes(std::vector<bool> &data, Terrain::Faces &faces, Terrain::Face &externalFace) {
+	void RemoveLakes(std::vector<bool> &data, const Mesh &mesh, const MeshEdgeMap &edges) {
 		std::unordered_set<int> sea;
-		MapSea(*externalFace.halfEdge(), data, sea);
-		for (auto i = faces.begin(); i != faces.end(); ++i) {
-			if (data[i->data()]) {
-				if (sea.find(i->data()) == sea.end()) {
-					data[i->data()] = false;
-				}
+		MapSea(mesh, edges, data, sea);
+		for (int i = 0; i != mesh.vertices.size(); ++i) {
+			if (data[i] && sea.find(i) == sea.end()) {
+				data[i] = false;
 			}
 		}
 	}
@@ -89,21 +75,20 @@ namespace {
 	};
 
 	template <class DistanceTo>
-	float ComputeDistanceTo(Terrain &terrain, const std::vector<bool> &sea, std::vector<float> &distanceVec, DistanceTo dt) {
-		typedef std::stack<Terrain::Vertex*> Stack;
+	float ComputeDistanceTo(const Mesh &mesh, const MeshEdgeMap &edges, const std::vector<bool> &sea, std::vector<float> &distanceVec, DistanceTo dt, float addMul) {
+		typedef std::stack<int> Stack;
 
 		Stack circles[2];
 		Stack *last = circles;
 		Stack *next = circles + 1;
 
-		float distance = 0.0f, add = 0.5f, addMul = 1.05f;
-		for (auto i = terrain.vertices().begin(); i != terrain.vertices().end(); ++i) {
-			//dt.target(i->data()) = std::numeric_limits<float>::max();
-			for (auto j : i->inbound()) {
-				if (dt(sea[j.face().data()])) {
-					//dt.target(i->data()) = 0;
-					distanceVec[i->data()] = 0.0f;
-					last->push(&*i);
+		float distance = 0.0f, add = 0.5f;
+		for (int i = 0; i != mesh.vertices.size(); ++i) {
+			auto neighbours = edges.vertex(i);
+			while (neighbours.first != neighbours.second){
+				if (dt(sea[*neighbours.first++])) {
+					distanceVec[i] = 0.0f;
+					last->push(i);
 					break;
 				}
 			}
@@ -112,13 +97,15 @@ namespace {
 			add *= addMul;
 			distance += add;
 			while (!last->empty()) {
-				Terrain::Vertex *vertex(last->top());
+				int i = last->top();
 				last->pop();
-				for (auto j = vertex->inbound().begin(); j != vertex->inbound().end(); ++j) {
-					if (j->pair && distance < distanceVec[j->pair->vertex().data()]) {
-						distanceVec[j->pair->vertex().data()] = distance;
-						next->push(&j->pair->vertex());
+				auto neighbours = edges.vertex(i);
+				while (neighbours.first != neighbours.second) {
+					if (distance < distanceVec[*neighbours.first]) {
+						distanceVec[*neighbours.first] = distance;
+						next->push(*neighbours.first);
 					}
+					++neighbours.first;
 				}
 			}
 			Stack *swap = last;
@@ -128,24 +115,20 @@ namespace {
 		return distance;
 	}
 
-	void setZValues(Terrain::Vertices &vertices, const std::vector<float> &distanceToSea, const std::vector<float> &distanceToLand, float maxDistance, float maxZ) {
+	void setZValues(std::vector<Vector3> &vertices, const std::vector<float> &distanceToSea, const std::vector<float> &distanceToLand, float maxDistance, float maxZ) {
 		float mul = maxZ / maxDistance;
-		for (auto i = vertices.begin(); i != vertices.end(); ++i) {
-			i->position().z = (distanceToSea[i->data()] - distanceToLand[i->data()]) * mul;
-			if (i->position().z < -0.002f) {
-				i->position().z = -0.002f;
-			}
+		for (int i = 0; i != vertices.size(); ++i) {
+			vertices[i].z = (distanceToSea[i] - distanceToLand[i]) * mul;
 		}
 	}
 
-	float generateSeas(Terrain &terrain, std::default_random_engine &rnd, float &maxZ, float waterRatio) {
+	float generateSeas(Mesh &terrain, std::default_random_engine &rnd, float &maxZ, const Island::Options &options) {
 		std::uniform_real_distribution<float> dis(0.0f, 1.0f);
 		maxZ = std::normal_distribution<float>(maxZ, maxZ * 0.2f)(rnd);
-		std::vector<bool> seas;
-		std::vector<float> distanceToSea, distanceToLand;
-		terrain.initFaceData(seas, false);
-		terrain.initVertexData(distanceToSea, std::numeric_limits<float>::max());
-		terrain.initVertexData(distanceToLand, std::numeric_limits<float>::max());
+		std::vector<bool> seas(terrain.vertices.size(), false);
+		std::vector<float> distanceToSea(terrain.vertices.size(), std::numeric_limits<float>::max());
+		std::vector<float> distanceToLand(terrain.vertices.size(), std::numeric_limits<float>::max());
+		MeshEdgeMap edges(terrain);
 		NoiseLayer layers[4];
 		float strength = 2.0f;
 		for (int i = 0; i != 4; ++i) {
@@ -153,40 +136,28 @@ namespace {
 			strength *= 4.0f;
 		}
 		int seaCount = 0;
-		for (auto i = terrain.faces().begin(); i != terrain.faces().end(); ++i) {
-			if (&*i == &terrain.externalFace()) {
-				continue;
-			}
-			Vector3 centre = i->calculateCentroid();
-			centre.z = 0.0f;
+		static Vector3 centre(0.5f, 0.5f, 0.0f);
+		for (int i = 0; i != terrain.vertices.size(); ++i) {
 			float noise = 0.0f;
 			float dilute = 1.0f;
-			for (int i = 0; i != 4; ++i) {
-				noise += layers[i].get(centre.toVector2()) / dilute;
+			for (int j = 0; j != 4; ++j) {
+				noise += layers[j].get(terrain.vertices[i].asVector2()) / dilute;
 				dilute *= 2.0f;
 			}
-			noise *= 1.0f - ((centre - Vector3(0.5f, 0.5f, 0.0f)).magnitude() * 1.5f);
-			if (seas[i->data()] = noise < waterRatio) {
+			noise *= 1.0f - ((terrain.vertices[i] - centre).magnitude() * 1.5f);
+			if (seas[i] = noise < options.waterRatio) {
 				++seaCount;
 			}
 		}
-		RemoveLakes(seas, terrain.faces(), terrain.externalFace());
-		float maxHeight = ComputeDistanceTo(terrain, seas, distanceToSea, DistanceToSea());
-		ComputeDistanceTo(terrain, seas, distanceToLand, DistanceToLand());
+		RemoveLakes(seas, terrain, edges);
+		float maxHeight = ComputeDistanceTo(terrain, edges, seas, distanceToSea, DistanceToSea(), options.slopeMultiplier);
+		ComputeDistanceTo(terrain, edges, seas, distanceToLand, DistanceToLand(), 0.75f);
 
-		setZValues(terrain.vertices(), distanceToSea, distanceToLand, maxHeight, maxZ);
+		setZValues(terrain.vertices, distanceToSea, distanceToLand, maxHeight, maxZ);
 		return maxHeight;
 	}
 
-	void generateLod0(const Mesh &lod1, Mesh &lod0) {
-		Mesh mid;
-		lod1.tesselate(mid);
-		mid.tesselate(lod0);
-		lod0.smooth();
-		//lod0 = lod1;
-	}
-
-	uint32_t computeOcclusian(const Grid<Mesh::VertexAndNormal> &grid, int x, int y) {
+	uint8_t computeOcclusian(const Grid<Mesh::VertexAndNormal> &grid, int x, int y) {
 		float total = 0.0f;
 		size_t count = 0;
 		const Mesh::VertexAndNormal &van = grid(x, y);
@@ -203,7 +174,7 @@ namespace {
 				++count;
 			}
 		}
-		return count > 0 ? (static_cast<uint32_t>((1.0f - (total / count)) * 255.0f) << 24) : 0xff000000;
+		return count > 0 ? static_cast<uint8_t>((1.0f - (total / count)) * 255.0f) : 0xff;
 	}
 
 	void correctZ(const Grid<Mesh::VertexAndNormal> &grid, Mesh &mesh) {
@@ -227,12 +198,6 @@ namespace {
 		mesh.calculateNormals();
 	}
 
-	/*void pushDownPerimiter(TerrainGraph &graph) {
-		for (auto i = graph.externalFace().halfEdges().begin(); i != graph.externalFace().halfEdges().end(); ++i) {
-			i->vertex().data().z = -1.0f;
-		}
-	}*/
-
 	uint32_t clampToU8(float in) {
 		if (in < 0.0f) {
 			return 0;
@@ -249,126 +214,128 @@ namespace {
 		return out | clampToU8(127.5f + (vec.z * 127.5f));
 	}
 
-	void correctLodsAndGenerateMaps(Mesh *lods, Island::NormalAndOcclusianMap &normalMap) {
-		Grid<Mesh::VertexAndNormal> grid(2048, 2048);
+	inline uint32_t computeAlbedo(const Mesh::VertexAndNormal &van, const Island::Pallete &pallete) {
+		float slope = van.normal.dot(Vector3::unitZ());
+		slope *= slope;
+		if ((slope < 0.7f && van.vertex.z < 0.0001) || van.vertex.z <= 0.0f) {
+			return toColour32(pallete.sand);
+		}
+		if (van.vertex.z > 0.05f) {
+			return toColour32(pallete.mountain);
+		}
+		else {
+			float rock = van.vertex.z * 20.0f;
+			Vector3 base = pallete.grass * (1.0f - rock) + pallete.mountain * rock;
+			return toColour32(base * slope + (pallete.cliff * (1.0f - slope)));
+		}
+	}
+
+	void assignNormalAndOcclusianMap(Island::NormalAndOcclusianMap &map, const Mesh &lod2, const Grid<Vector3> &normals, const Grid<uint8_t> &occlusian) {
+		Grid<Vector3> low(MOTU_TEXTURE_MAP_SIZE, MOTU_TEXTURE_MAP_SIZE);
+		lod2.rasterizeNormalsOnly(low);
+		static int size = MOTU_TEXTURE_MAP_SIZE * MOTU_TEXTURE_MAP_SIZE;
+		for (int i = 0; i != size; ++i) {
+			map.data()[i] = createNormalValue((Vector3::unitZ() + normals.data()[i] - low.data()[i]).normalized()) | (static_cast<uint32_t>(occlusian.data()[i]) << 24);
+		}
+	}
+
+	void correctLodsAndGenerateMaps(Mesh *lods, Island::NormalAndOcclusianMap &nao, Island::AlbedoMap &albedo, const Island::Pallete &pallete, const Rivers &rivers) {
+		Grid<Mesh::VertexAndNormal> grid(MOTU_TEXTURE_MAP_SIZE, MOTU_TEXTURE_MAP_SIZE);
+		Raster raster(MOTU_TEXTURE_MAP_SIZE, MOTU_TEXTURE_MAP_SIZE);
 		lods[0].calculateNormals();
 		lods[0].rasterize(grid);
-		for (size_t y = 0, i = 0; y != grid.height(); ++y) {
-			for (size_t x = 0; x != grid.width(); ++x, ++i) {
-				normalMap.data()[i] = createNormalValue(grid.data()[i].normal) | computeOcclusian(grid, x, y);
-			}
-		}
 		correctZ(grid, lods[1]);
 		correctZ(grid, lods[2]);
+		Grid<Vector3> normals(MOTU_TEXTURE_MAP_SIZE, MOTU_TEXTURE_MAP_SIZE);
+		Grid<uint8_t> occlusian(MOTU_TEXTURE_MAP_SIZE, MOTU_TEXTURE_MAP_SIZE);
+		for (size_t y = 0, i = 0; y != grid.height(); ++y) {
+			for (size_t x = 0; x != grid.width(); ++x, ++i) {
+				normals.data()[i] = grid.data()[i].normal;
+				occlusian.data()[i] = computeOcclusian(grid, x, y);
+				raster.data()[i] = computeAlbedo(grid.data()[i], pallete);
+			}
+		}
+		assignNormalAndOcclusianMap(nao, lods[2], normals, occlusian);
+		for (const Rivers::River &river : rivers.rivers()) {
+			auto i = river.begin();
+			Vector2 last = lods[1].vertices[i->first].asVector2();
+			for (++i; i != river.end(); ++i) {
+				const Vector2 &next = lods[1].vertices[i->first].asVector2();
+				raster.draw(Edge(last, next), toColour32(pallete.cliff));
+				last = next;
+			}
+		}
+		for (int i = 0; i != raster.length(); ++i) {
+			albedo.data()[i] = toColour16(raster.data()[i]);
+		}
 	}
 
 	Vector3 vector2ToVector3(const Vector2 &vec) {
 		return Vector3(vec.x, vec.y, 0.0f);
 	}
 
-	void createSeedPoints(std::default_random_engine &rd, int number, int relaxations, std::vector<Vector2> &points) {
+	void createSeedPoints(std::default_random_engine &rd, int number, std::vector<Vector3> &points) {
 		points.reserve(number);
 		std::uniform_real_distribution<float> dis(0.0f, 1.0f);
 		for (int i = 0, j = number - 8; i < j; ++i) {
-			points.emplace_back(dis(rd), dis(rd));
+			points.emplace_back(dis(rd), dis(rd), 0.0f);
 		}
-		points.emplace_back(0.0f, 0.0f);
-		points.emplace_back(0.0f, 0.5f);
-		points.emplace_back(0.0f, 1.0f);
-		points.emplace_back(0.5f, 1.0f);
-		points.emplace_back(1.0f, 1.0f);
-		points.emplace_back(1.0f, 0.5f);
-		points.emplace_back(1.0f, 0.0f);
-		points.emplace_back(0.5f, 0.0f);
-		while (relaxations-- > 0) {
-			Terrain::relax(points);
+		points.emplace_back(0.0f, 0.0f, 0.0f);
+		points.emplace_back(0.0f, 0.5f, 0.0f);
+		points.emplace_back(0.0f, 1.0f, 0.0f);
+		points.emplace_back(0.5f, 1.0f, 0.0f);
+		points.emplace_back(1.0f, 1.0f, 0.0f);
+		points.emplace_back(1.0f, 0.5f, 0.0f);
+		points.emplace_back(1.0f, 0.0f, 0.0f);
+		points.emplace_back(0.5f, 0.0f, 0.0f);
+	}
+
+	void createInitialTerrain(std::default_random_engine &rd, Mesh &mesh) {
+		std::vector<Vector3> points;
+		createSeedPoints(rd, 512, points);
+		createDalauneyMesh(points, mesh);
+		for (int i = 0; i != 16; ++i) {
+			mesh.smooth();
 		}
 	}
 
-	Terrain *createInitialTerrain(std::default_random_engine &rd) {
-		std::vector<Vector2> points;
-		createSeedPoints(rd, 512, 10, points);
-		return new Terrain(points, 2);
-	}
-
-	Terrain *replaceWithSmoothed(Terrain *terrain, int iterations) {
-		Mesh meshes[2];
-		terrain->toMesh(meshes[iterations & 1]);
-		while (iterations > 0) {
-			meshes[iterations & 1].tesselate(meshes[(iterations ^ 1) & 1]);
-			--iterations;
-		}
-		meshes->smooth();
-		return new Terrain(*meshes);
-	}
-
-	void tesselateAndSmooth(const Mesh &in, Mesh &out) {
-		Mesh buffer;
-		in.tesselate(buffer);
-		buffer.tesselate(out);
-		out.smooth();
-	}
-
-	Rivers *erode(Mesh &mesh) {
+	Rivers *erode(Mesh &mesh, const Island::Options &options) {
 		MeshEdgeMap mep(mesh);
-		applyHydrolicErosian(mesh, mep, 16);
+		applyHydrolicErosian(mesh, mep, options.erosianPasses);
+		applySeaErosian(mep, mesh);
 		Rivers *rivers = new Rivers(mesh, mep);
-		rivers->carveInto(mesh, mep, 0.002f);
+		rivers->carveInto(mesh, mep, 0.0f, options.maxRiverGradient);
 		return rivers;
 	}
 
-	void erode(const Rivers &river, const Mesh &old, Mesh &nw) {
+	void erode(Rivers **river, const Mesh &old, Mesh &nw, const Island::Options &options) {
 		MeshEdgeMap mep(nw);
-		applyHydrolicErosian(nw, mep, 16);
-		Rivers rivers(river, old, nw, mep);
-		rivers.smooth(nw, mep);
-		rivers.carveInto(nw, mep, 0.001f);
+		applyHydrolicErosian(nw, mep, options.erosianPasses);
+		Rivers *rivers = new Rivers(**river, old, nw, mep);
+		rivers->smooth(nw, mep);
+		rivers->carveInto(nw, mep, options.riverDepth, options.maxRiverGradient);
+		applySeaErosian(mep, nw);
+		delete *river;
+		*river = rivers;
 	}
 }
 
-void Island::generateTopology(std::default_random_engine &rd, float waterRatio) {
-	Terrain *terrain = createInitialTerrain(rd);
-	maxHeight = generateSeas(*terrain, rd, maxZ, waterRatio);
-	terrain = replaceWithSmoothed(terrain, 1);
-	terrain->toMesh(lods[2]);
-	Rivers *rivers = erode(lods[2]);
-	lods[2].tesselate(lods[1]);
-	erode(*rivers, lods[2], lods[1]);
-	delete rivers;
-	tesselateAndSmooth(lods[1], lods[0]);
-	correctLodsAndGenerateMaps(lods, mNormalAndOcclusianMap);
-
-	/*Mesh mesh;
-	createInitialMesh(rd, 1024, mesh);
-	HalfEdges halfEdges(mesh.triangles.size());
-	Vertices vertices(mesh.vertices.size());
-	Faces faces(mesh.triangles.size() / 3);
-	Face externalFace = mesh.createHalfEdgeGraph(vertices, halfEdges, faces);
-	generateSeas(faces, vertices, &externalFace, rd, maxZ, waterRatio);
-	
-
-	//maxHeight = generateSeas(graph, rd, maxZ, waterRatio);
-	TriangulatedTerrainGraph firstPass(graph);
-	Mesh raw[3];
-	firstPass.smooth();
-	firstPass.erode(8, 0.04f);
-	firstPass.toMesh(raw[2]);
-	TriangulatedTerrainGraph::RiverSections riverSections;
-	TriangulatedTerrainGraph::LastList lastList;
-	firstPass.fillLastList(lastList, 3.0f);
-	lastList.copyToRiverSections(riverSections);
-	TriangulatedTerrainGraph tri(firstPass);
-	tri.erode(8, 0.02f);
-	lastList.clear();
-	tri.fillLastListInterpolated(riverSections, lastList);
-	tri.carveRiverBeds(lastList);
-	tri.smoothRiverBeds(lastList);
-	tri.generateRiverMesh(lastList, mRivers);
-	tri.toMesh(raw[1]);
-	generateLod0(raw[1], raw[0]);
-	BoundingBox box(0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f);
-	for (size_t i = 0; i != 3; ++i) {
-		raw[i].slice(box, lods[i]);
+void Island::generateTopology(std::default_random_engine &rd, const Options &options) {
+	createInitialTerrain(rd, lods[2]);
+	for (int i = 0; i != 2; ++i) {
+		lods[2].tesselate();
+		lods[2].smooth();
 	}
-	correctLodsAndGenerateMaps(lods, mNormalAndOcclusianMap);*/
+	maxHeight = generateSeas(lods[2], rd, maxZ, options);
+	lods[2].tesselate();
+	lods[2].smooth();
+	Rivers *rivers = erode(lods[2], options);
+	lods[1] = lods[2];
+	lods[1].tesselate();
+	erode(&rivers, lods[2], lods[1], options);
+	lods[0] = lods[1];
+	lods[0].tesselate().tesselate().smooth();
+	applySeaErosian(lods[0]);
+	correctLodsAndGenerateMaps(lods, mNormalAndOcclusianMap, albedo, options.pallete, *rivers);
+	delete rivers;
 }

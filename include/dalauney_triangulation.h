@@ -23,7 +23,7 @@ namespace motu{
 		void increment() {}
 	};
     
-    template <class FaceData = EmptyData, class VertexData = EmptyData, class ProgressMonitor = EmptyProgressMonitor>
+    template <class FaceData = EmptyData, class VertexData = EmptyData/*, class ProgressMonitor = EmptyProgressMonitor*/>
     class DalauneyTriangulation{
     public:
         typedef HalfEdge<Vector2, FaceData, VertexData> HalfEdgeType;
@@ -94,7 +94,6 @@ namespace motu{
         Faces *mFaces;
         Vertices *mVertices;
         Face *mExternalFace;
-		ProgressMonitor monitor;
         
         struct TriangleWithCircumcircle{
             Triangle triangle;
@@ -130,7 +129,7 @@ namespace motu{
             }
         };
         
-        typedef BRTree<TriangleWithCircumcircle> RTree;
+        typedef BRTree<BoundingRectangle, TriangleWithCircumcircle> RTree;
         
         static Triangle CreateBoundingTriangle(const std::vector<Vector2> &points){
             BoundingRectangle bounds(points.begin(), points.end());
@@ -170,11 +169,10 @@ namespace motu{
         }
     };
     
-    template <class FaceData, class VertexData, class Monitor>
-    DalauneyTriangulation<FaceData, VertexData, Monitor>::DalauneyTriangulation(const std::vector<Vector2> &points){
-		monitor.setTotal(points.size());
+    template <class FaceData, class VertexData>
+    DalauneyTriangulation<FaceData, VertexData>::DalauneyTriangulation(const std::vector<Vector2> &points){
         typedef HalfEdge<FaceData, VertexData> HalfEdgeType;
-        size_t expectedTriangles = points.size() - 2;
+        int expectedTriangles = points.size() - 2;
         mHalfEdges = new HalfEdges(expectedTriangles * 3);
         mFaces = new Faces(expectedTriangles);
         mVertices = new Vertices(points.size());
@@ -186,7 +184,6 @@ namespace motu{
         searchBuffer.reserve(expectedTriangles);
         std::vector<Edge> poly;
         for (auto i = points.begin(); i != points.end(); ++i){
-			monitor.increment();
             if (!AddBadTriangles(*i, badTriangles, rTree, searchBuffer)){
                 continue;
             }

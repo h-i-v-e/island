@@ -16,6 +16,8 @@
 namespace motu{
     
     struct BoundingRectangle{
+		typedef Vector2 VectorType;
+
         Vector2 topLeft, bottomRight;
 
         BoundingRectangle(Vector2 topLeft, Vector2 bottomRight) : topLeft(topLeft), bottomRight(bottomRight){}

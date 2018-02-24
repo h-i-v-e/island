@@ -1,37 +1,43 @@
+#include <random>
+
 #include "unity.h"
 #include "island.h"
-#include "bounding_box.h"
 
 using namespace motu;
 
-MotuMesh *MotuGetMesh(Motu *motu, int lod, float ux, float uy, float uz, float lx, float ly, float lz) {
-	Mesh *mesh = new Mesh();
-	reinterpret_cast<Island*>(motu->data)->lod(lod).slice(BoundingBox(ux, uy, uz, lx, ly, lz), *mesh);
-	MotuMesh *out = new MotuMesh;
-	out->data = mesh;
-	out->numTriangles = mesh->triangles.size();
-	out->numVertices = mesh->vertices.size();
-	out->triangles = mesh->triangles.data();
-	out->vertices = reinterpret_cast<float*>(mesh->vertices.data());
-	return out;
+void *CreateMotu(int seed) {
+	Island::Options options;
+	options.pallete.cliff = Vector3(0.9f, 0.9f, 0.9f);
+	options.pallete.sand = Vector3(1.0f, 0.95f, 0.9f);
+	options.pallete.grass = Vector3(0.5f, 1.0f, 0.35f);
+	options.pallete.mountain = Vector3(1.0f, 0.9f, 0.25f);
+	return new Island(std::default_random_engine(seed), options);
 }
 
-void MotuFreeMesh(MotuMesh *mesh) {
-	delete reinterpret_cast<Mesh*>(mesh->data);
-	delete mesh;
+void ReleaseMotu(void *ptr) {
+	delete reinterpret_cast<Island*>(ptr);
 }
 
-Motu *MotuAllocateIsland(int seed) {
-	Motu *motu = new Motu;
-	std::default_random_engine rand(seed);
-	Island *island = new Island(rand, 4096, 2, 0.05f, 0.5f);
-	motu->data = island;
-	//motu->normalMap = const_cast<uint32_t*>(island->normalMap().data());
-	//motu->occlusianMap = const_cast<uint8_t*>(island->occlusianMap().data());
-	return motu;
+void CreateMesh(void *ptr, const ExportArea *area, int lod, ExportMesh *exp) {
+	Island *island = reinterpret_cast<Island*>(ptr);
+	Mesh *mesh = new Mesh;
+	island->lod(lod).slice(*reinterpret_cast<const BoundingBox*>(area), *mesh);
+	mesh->calculateNormals();
+	exp->handle = mesh;
+	exp->normals.data = reinterpret_cast<Vector3Export*>(mesh->normals.data());
+	exp->normals.length = mesh->normals.size();
+	exp->vertices.data = reinterpret_cast<Vector3Export*>(mesh->vertices.data());
+	exp->vertices.length = mesh->vertices.size();
+	exp->triangles.data = reinterpret_cast<int*>(mesh->triangles.data());
+	exp->triangles.length = mesh->triangles.size();
 }
 
-void MotuReleaseIsland(Motu *motu) {
-	delete reinterpret_cast<Island*>(motu->data);
-	delete motu;
+void ReleaseMesh(ExportMesh *exp) {
+	delete reinterpret_cast<Mesh*>(exp->handle);
+}
+
+void FetchTextures(void *motu, ExportTextures *et) {
+	Island *island = reinterpret_cast<Island*>(motu);
+	et->texture = island->normalAndOcclusianMap().data();
+	et->albedo = island->albedoMap().data();
 }

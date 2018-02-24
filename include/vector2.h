@@ -11,7 +11,6 @@
 
 #include <cmath>
 #include <iostream>
-#include "constants.h"
 #include "util.h"
 
 namespace motu {
@@ -61,6 +60,12 @@ namespace motu {
         Vector2 operator/(float f) const{
             return Vector2(x / f, y / f);
         }
+
+		Vector2 &operator/=(float f) {
+			x /= f;
+			y /= f;
+			return *this;
+		}
         
         Vector2 normal() const{
             return Vector2(y, -x);

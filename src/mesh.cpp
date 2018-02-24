@@ -7,31 +7,26 @@
 //
 
 #include "mesh.h"
-#include "half_edge.h"
-#include "iterable_releasable_object_pool.h"
 #include <queue>
 #include "plane.h"
 #include <vector>
-#include <map>
 #include "triangle3.h"
 #include <algorithm>
-#include <cassert>
-#include "bounding_rectangle.h"
 #include "brtree.h"
 #include "triangle.h"
-#include <array>
 #include "bounding_box.h"
 #include <unordered_map>
 #include <unordered_set>
 #include "util.h"
 #include "mesh_edge_map.h"
 #include "mesh_triangle_map.h"
+#include "matrix4.h"
 
 using namespace motu;
 
 namespace{
 
-	typedef BRTree<size_t> RefRtree;
+	typedef BRTree<BoundingRectangle, size_t> RefRtree;
 
 	inline void interpolated(const Vector3 &endA, const Vector3 &endB, float hitTime, Vector3 &out) {
 		out = endA + ((endB - endA) * hitTime);
@@ -51,7 +46,7 @@ namespace{
         in.vertex.x = std::numeric_limits<float>::max();
         out.vertex.x = std::numeric_limits<float>::min();
         int found = 0;
-		for (size_t i = 0; i != 3; ++i) {
+		for (int i = 0; i != 3; ++i) {
 			const Vector3 &a = tri.vertices[i], &b = tri.vertices[(i + 1) % 3];
 			Edge edge(a.x, a.y, b.x, b.y);
             Vector2 direction(edge.direction());
@@ -79,7 +74,7 @@ namespace{
 	template <class Raster, class Tri>
     void fillTriangle(Raster &grid, const Tri &tri){
         float minY = std::numeric_limits<float>::max(), maxY = std::numeric_limits<float>::min();
-		for (size_t i = 0; i != 3; ++i) {
+		for (int i = 0; i != 3; ++i) {
             float y = tri.vertices[i].y;
             if (y < minY){
                 minY = y;
@@ -135,7 +130,7 @@ namespace{
 				return *this;
 			}
 
-			void interpolate(const Triangle3WithNormals &tri, size_t endA, size_t endB, float at) {
+			void interpolate(const Triangle3WithNormals &tri, int endA, int endB, float at) {
 				interpolated(tri.vertices[endA], tri.vertices[endB], at, vertex);
 				interpolated(tri.normals[endA], tri.normals[endB], at, normal);
 			}
@@ -145,6 +140,33 @@ namespace{
 			}
 		};
 	};
+
+	struct Normals : public Triangle3WithNormals {
+		struct InOut : public Mesh::VertexAndNormal {
+			InOut() {}
+
+			InOut(const InOut &in, const InOut &out, float denom) {
+				vertex = (out.vertex - in.vertex) / denom;
+				normal = (out.normal - in.normal) / denom;
+			}
+
+			InOut &operator+=(const InOut &add) {
+				vertex += add.vertex;
+				normal += add.normal;
+				return *this;
+			}
+
+			void interpolate(const Triangle3WithNormals &tri, int endA, int endB, float at) {
+				interpolated(tri.vertices[endA], tri.vertices[endB], at, vertex);
+				interpolated(tri.normals[endA], tri.normals[endB], at, normal);
+			}
+
+			void assignTo(Vector3 &norm) const {
+				norm = normal;
+			}
+		};
+	};
+
 
 	struct Tri : public Triangle3 {
 		struct InOut {
@@ -161,12 +183,37 @@ namespace{
 				return *this;
 			}
 
-			void interpolate(const Triangle3 &tri, size_t endA, size_t endB, float at) {
+			void interpolate(const Triangle3 &tri, int endA, int endB, float at) {
 				interpolated(tri.vertices[endA], tri.vertices[endB], at, vertex);
 			}
 
-			void assignTo(Vector3 &v) const{
+			void assignTo(Vector3 &v) const {
 				v = vertex;
+			}
+		};
+	};
+
+		struct Hieght : public Triangle3{ 
+			struct InOut {
+			Vector3 vertex;
+
+			InOut() {}
+
+			InOut(const InOut &in, const InOut &out, float denom) {
+				vertex = (out.vertex - in.vertex) / denom;
+			}
+
+			InOut &operator+=(const InOut &add) {
+				vertex += add.vertex;
+				return *this;
+			}
+
+			void interpolate(const Triangle3 &tri, int endA, int endB, float at) {
+				interpolated(tri.vertices[endA], tri.vertices[endB], at, vertex);
+			}
+
+			void assignTo(float &v) const {
+				v = vertex.z;
 			}
 		};
 	};
@@ -176,15 +223,9 @@ namespace{
 		for (const Triangle3 &tri : in) {
 			tri.slice(divider, out);
 		}
-		/*while (i != out.size()) {
-			if (out[i].normal().dot(Vector3::unitZ()) < 0.0f) {
-				out[i].flipRotation();
-			}
-			++i;
-		}*/
 	}
 
-	inline Triangle3 getTriangle(const Mesh &mesh, size_t offset) {
+	inline Triangle3 getTriangle(const Mesh &mesh, int offset) {
 		return Triangle3(
 			mesh.vertices[mesh.triangles[offset]],
 			mesh.vertices[mesh.triangles[offset + 1]],
@@ -200,18 +241,18 @@ namespace{
 		}
 	};
 
-	typedef std::pair<uint32_t, uint32_t> OffsetPair;
+	typedef std::pair<int, int> OffsetPair;
 
 	struct OffsetPairHasher {
 		size_t operator()(const OffsetPair &pair) const {
-			return (pair.first * 1610612741) ^ (pair.second * 805306457);
+			return (pair.first * HASH_PRIME_A) ^ (pair.second * HASH_PRIME_B);
 		}
 	};
 
 	typedef std::unordered_map<OffsetPair, Flip, OffsetPairHasher> FlipMap;
 	typedef std::vector<Triangle3> Triangles;
 
-	void tesselateTriangle(const Mesh &mesh, uint32_t offset, FlipMap &flips, Triangles &out) {
+	void tesselateTriangle(const Mesh &mesh, int offset, FlipMap &flips, Triangles &out) {
 		Triangle3 tri(getTriangle(mesh, offset));
 		Vector3 norm(tri.normal());
 		Vector3 centre(tri.baricentre());
@@ -223,7 +264,7 @@ namespace{
 				return;
 			}
 		}
-		for (size_t j = 0; j != 3; ++j) {
+		for (int j = 0; j != 3; ++j) {
 			OffsetPair spline(mesh.triangles[offset + j], mesh.triangles[offset + ((j + 1) % 3)]);
 			bool swapped = spline.second < spline.first;
 			if (swapped) {
@@ -240,56 +281,95 @@ namespace{
 		}
 	}
 
-	typedef std::pair<uint32_t, uint32_t> OffsetPair;
-
-	struct PerimeterHasher {
-		size_t operator()(const OffsetPair &pair) const {
-			return (pair.first * 1610612741) ^ (pair.second * 805306457);
+	void addEdge(Mesh::PerimeterSet &perm, const Mesh &mesh, int endA, int endB) {
+		endA = mesh.triangles[endA];
+		endB = mesh.triangles[endB];
+		if (endB < endA) {
+			std::swap(endA, endB);
 		}
-	};
-
-	struct PerimeterSet : public std::unordered_set<uint32_t>{
-		typedef std::unordered_set<OffsetPair, PerimeterHasher> EdgeSet;
-
-		void addEdge(const Mesh &mesh, EdgeSet &edgeSet, uint32_t endA, uint32_t endB) {
-			endA = mesh.triangles[endA];
-			endB = mesh.triangles[endB];
-			if (endB < endA) {
-				std::swap(endA, endB);
-			}
-			OffsetPair op(endA, endB);
-			auto i = edgeSet.find(op);
-			if (i == edgeSet.end()) {
-				edgeSet.emplace_hint(i, op);
-			}
-			else {
-				edgeSet.erase(i);
-			}
+		Mesh::PerimeterSet::OffsetPair op(endA, endB);
+		auto i = perm.edgeSet.find(op);
+		if (i == perm.edgeSet.end()) {
+			perm.edgeSet.emplace_hint(i, op);
 		}
-
-		PerimeterSet(const Mesh &mesh) {
-			EdgeSet edgeSet;
-			edgeSet.reserve(mesh.triangles.size());
-			for (uint32_t i = 2; i < mesh.triangles.size(); i += 3) {
-				addEdge(mesh, edgeSet, i - 2, i - 1);
-				addEdge(mesh, edgeSet, i - 1, i);
-				addEdge(mesh, edgeSet, i, i - 2);
-			}
-			reserve(edgeSet.size());
-			for (const OffsetPair &op : edgeSet) {
-				insert(op.first);
-				insert(op.second);
-			}
+		else {
+			perm.edgeSet.erase(i);
 		}
-	};
+	}
+
+	template <class TriType, class GridType>
+	void rasterize(const Mesh &mesh, TriType &tri, GridType &raster) {
+		for (int i = 0; i + 2 < mesh.triangles.size();) {
+			for (int j = 0; j != 3; ++j, ++i) {
+				size_t offset = mesh.triangles[i];
+				tri.vertices[j] = mesh.vertices[offset];
+			}
+			fillTriangle(raster, tri);
+		}
+	}
+
+	template <class TriType, class GridType>
+	void rasterizeNormals (const Mesh &mesh, TriType &tri, GridType &raster) {
+		for (int i = 0; i + 2 < mesh.triangles.size();) {
+			for (int j = 0; j != 3; ++j, ++i) {
+				int offset = mesh.triangles[i];
+				tri.vertices[j] = mesh.vertices[offset];
+				tri.normals[j] = mesh.normals[offset];
+			}
+			fillTriangle(raster, tri);
+		}
+	}
 }
 
-Mesh &Mesh::tesselate(Mesh &mesh) const {
+BoundingBox &Mesh::getMaxSquare(BoundingBox &out) const{
+	PerimeterSet perimeter;
+	getPerimeterSet(perimeter);
+	BoundingRectangle bounds;
+	bounds.clear();
+	for (int i : perimeter) {
+		Vector2 vec2 = vertices[i].asVector2();
+		bounds.add(vec2);
+	}
+	motu::Edge a(bounds.topLeft, bounds.bottomRight), b(bounds.topLeft.x, bounds.bottomRight.y, bounds.bottomRight.x, bounds.topLeft.y);
+	bounds.clear();
+	BoundingRectangle bBounds;
+	bBounds.clear();
+	for (auto i = perimeter.edgeSet.begin(); i != perimeter.edgeSet.end(); ++i) {
+		motu::Edge edge(vertices[i->first].asVector2(), vertices[i->second].asVector2());
+		Vector2 intersection;
+		if (edge.intersects(a, intersection)) {
+			bounds.add(intersection);
+		}
+		else if (edge.intersects(b, intersection)) {
+			bBounds.add(intersection);
+		}
+	}
+	out.upper.x = std::max(bounds.topLeft.x, bBounds.topLeft.x);
+	out.upper.y = std::max(bounds.topLeft.y, bBounds.topLeft.y);
+	out.upper.z = -1.0f;
+	out.lower.x = std::min(bounds.bottomRight.x, bBounds.bottomRight.x);
+	out.lower.y = std::min(bounds.bottomRight.y, bBounds.bottomRight.y);
+	out.lower.z = 1.0f;
+	float width = out.lower.x - out.upper.x, height = out.lower.y - out.upper.y;
+	if (width < height) {
+		float inset = (height - width) * 0.5f;
+		out.upper.y += inset;
+		out.lower.y -= inset;
+	}
+	else {
+		float inset = (width - height) * 0.5f;
+		out.upper.x += inset;
+		out.lower.x -= inset;
+	}
+	return out;
+}
+
+Mesh &Mesh::tesselate() {
 	FlipMap flips;
 	flips.reserve(triangles.size());
 	std::vector<Triangle3> out;
 	out.reserve(triangles.size() * 3);
-	for (size_t i = 2; i < triangles.size(); i += 3) {
+	for (int i = 2; i < triangles.size(); i += 3) {
 		tesselateTriangle(*this, i - 2, flips, out);
 	}
 	for (auto i = flips.begin(); i != flips.end(); ++i) {
@@ -301,25 +381,26 @@ Mesh &Mesh::tesselate(Mesh &mesh) const {
 			emplacePreserveRotation(i->second.normal, out, vertices[i->first.first], i->second.a, vertices[i->first.second]);
 		}
 	}
-	mesh.load(out);
-	return mesh;
+	clear();
+	load(out);
+	return *this;
 }
 
 void Mesh::load(std::vector<Triangle3> &tris) {
-	std::unordered_map<Vector3, size_t, Hasher<Vector3>> vertexMap;
-	size_t numVerts = tris.size() + 2;
+	std::unordered_map<Vector3, int, Hasher<Vector3>> vertexMap;
+	int numVerts = tris.size() + 2;
 	vertexMap.reserve(numVerts);
 	triangles.reserve(tris.size());
 	vertices.reserve(numVerts);
 	for (auto i = tris.begin(); i != tris.end(); ++i) {
-		for (size_t j = 0; j != 3; ++j) {
+		for (int j = 0; j != 3; ++j) {
 			const Vector3 &vert = i->vertices[j];
 			auto k = vertexMap.find(vert);
 			if (k != vertexMap.end()) {
 				triangles.push_back(k->second);
 			}
 			else {
-				size_t pos = vertices.size();
+				int pos = vertices.size();
 				vertices.push_back(vert);
 				triangles.push_back(pos);
 				vertexMap.emplace(vert, pos);
@@ -345,15 +426,16 @@ void Mesh::calculateNormals() {
 
 void Mesh::smooth() {
 	MeshEdgeMap edges(*this);
-	PerimeterSet perimeter(*this);
+	PerimeterSet perimeter;
+	getPerimeterSet(perimeter);
 	Vector3 *moved = new Vector3[vertices.size()];
-	for (size_t i = 0; i != vertices.size(); ++i) {
+	for (int i = 0; i != vertices.size(); ++i) {
 		if (perimeter.find(i) != perimeter.end()) {
 			moved[i] = vertices[i];
 			continue;
 		}
 		Vector3 total(vertices[i]);
-		std::pair<const uint32_t*, const uint32_t*> offsets(edges.vertex(i));
+		std::pair<const int*, const int*> offsets(edges.vertex(i));
 		float count = static_cast<float>((offsets.second - offsets.first) + 1);
 		while (offsets.first != offsets.second) {
 			total += vertices[*(offsets.first++)];
@@ -366,34 +448,30 @@ void Mesh::smooth() {
 
 void Mesh::rasterize(Grid<VertexAndNormal> &raster) const{
 	TriWithNormals tri;
-	for (size_t i = 0; i + 2 < triangles.size();) {
-		bool valid = true;
-		for (size_t j = 0; j != 3; ++j, ++i) {
-			size_t offset = triangles[i];
+	for (int i = 0; i + 2 < triangles.size();) {
+		for (int j = 0; j != 3; ++j, ++i) {
+			int offset = triangles[i];
 			tri.vertices[j] = vertices[offset];
-			if ((tri.normals[j] = normals[offset]).z < 0.0f) {
-				tri.normals[j] *= -1.0f;
-			}
-		}
-		if (valid) {
-			fillTriangle(raster, tri);
-		}
-	}
-}
-
-void Mesh::rasterize(Grid<Vector3> &raster) const {
-	Tri tri;
-	for (size_t i = 0; i + 2 < triangles.size();) {
-		for (size_t j = 0; j != 3; ++j, ++i) {
-			size_t offset = triangles[i];
-			tri.vertices[j] = vertices[offset];
+			tri.normals[j] = normals[offset];
 		}
 		fillTriangle(raster, tri);
 	}
 }
 
+void Mesh::rasterizeNormalsOnly(Grid<Vector3> &raster) const {
+	rasterizeNormals(*this, ::Normals(), raster);
+}
+
+void Mesh::rasterize(Grid<Vector3> &raster) const {
+	::rasterize(*this, Tri(), raster);
+}
+
+void Mesh::rasterize(Grid<float> &raster) const {
+	::rasterize(*this, Hieght(), raster);
+}
+
 Mesh::Edges &Mesh::edges(Edges &edges) const {
-	for (size_t i = 2; i < triangles.size(); i += 3) {
+	for (int i = 2; i < triangles.size(); i += 3) {
 		edges.emplace(triangles[i - 2], triangles[i - 1]);
 		edges.emplace(triangles[i - 1], triangles[i]);
 		edges.emplace(triangles[i], triangles[i - 2]);
@@ -404,7 +482,7 @@ Mesh::Edges &Mesh::edges(Edges &edges) const {
 Mesh &Mesh::slice(const BoundingBox &bounds, Mesh &out) const {
 	std::vector<Triangle3> inside, selection, split;
 	inside.reserve(triangles.size() / 3);
-	for (size_t i = 2; i < triangles.size(); i += 3) {
+	for (int i = 2; i < triangles.size(); i += 3) {
 		Triangle3 tri(getTriangle(*this, i - 2));
 		if (bounds.intersects(tri)) {
 			if (bounds.contains(tri)) {
@@ -417,7 +495,7 @@ Mesh &Mesh::slice(const BoundingBox &bounds, Mesh &out) const {
 	}
 	Plane planes[6];
 	bounds.getPlanes(planes);
-	for (size_t i = 0; i != 6; ++i) {
+	for (int i = 0; i != 6; ++i) {
 		selection.clear();
 		for (const Triangle3 &tri : split) {
 			if (tri.intersects(planes[i])) {
@@ -433,4 +511,26 @@ Mesh &Mesh::slice(const BoundingBox &bounds, Mesh &out) const {
 	}
 	out.load(inside);
 	return out;
+}
+
+Mesh &Mesh::transform(const Matrix4 &m4) {
+	for (Vector3 &v3 : vertices) {
+		v3 = *reinterpret_cast<Vector3*>(&(m4 * Matrix4::asPoint(v3)));
+	}
+	return *this;
+}
+
+Mesh::PerimeterSet &Mesh::getPerimeterSet(Mesh::PerimeterSet &perm) const {
+	perm.edgeSet.reserve(triangles.size());
+	for (int i = 2; i < triangles.size(); i += 3) {
+		addEdge(perm, *this, i - 2, i - 1);
+		addEdge(perm, *this, i - 1, i);
+		addEdge(perm, *this, i, i - 2);
+	}
+	perm.reserve(perm.edgeSet.size());
+	for (const OffsetPair &op : perm.edgeSet) {
+		perm.insert(op.first);
+		perm.insert(op.second);
+	}
+	return perm;
 }

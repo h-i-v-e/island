@@ -11,21 +11,22 @@
 
 #include <vector>
 #include <set>
+#include <unordered_set>
 
 #include "grid.h"
 #include "triangle3.h"
 
-
 namespace motu{
 	struct BoundingBox;
+	struct Matrix4;
 
     struct Mesh{
         typedef std::vector<Vector3> Vertices;
         typedef std::vector<Vector3> Normals;
-        typedef std::vector<uint32_t> Triangles;
+        typedef std::vector<int> Triangles;
 		
-		struct Edge : public std::pair<size_t, size_t> {
-			Edge(size_t a, size_t b) : std::pair<size_t, size_t>(a, b) {}
+		struct Edge : public std::pair<int, int> {
+			Edge(int a, int b) : std::pair<int, int>(a, b) {}
 
 			bool operator < (const Edge &other) const {
 				if (first < other.first) {
@@ -39,6 +40,20 @@ namespace motu{
 		};
 
 		typedef std::set<Edge> Edges;
+
+		struct PerimeterSet : public std::unordered_set<int> {
+			typedef std::pair<int, int> OffsetPair;
+			struct PerimeterHasher {
+				size_t operator()(const OffsetPair &pair) const {
+					return (pair.first * HASH_PRIME_A) ^ (pair.second * HASH_PRIME_B);
+				}
+			};
+			typedef std::unordered_set<OffsetPair, PerimeterHasher> EdgeSet;
+
+			EdgeSet edgeSet;
+		};
+
+		PerimeterSet &getPerimeterSet(PerimeterSet &) const;
 
 		Mesh() {}
 
@@ -66,6 +81,11 @@ namespace motu{
 
 		void rasterize(Grid<Vector3> &) const;
 
+		void rasterizeNormalsOnly(Grid<Vector3> &) const;
+
+		//height map only
+		void rasterize(Grid<float> &) const;
+
 		Edges &edges(Edges &edges) const;
 
 		bool manifold() const {
@@ -77,7 +97,11 @@ namespace motu{
 
 		Mesh &slice(const BoundingBox &bounds, Mesh &out) const;
 
-		Mesh &tesselate(Mesh &out) const;
+		Mesh &tesselate();
+
+		BoundingBox &getMaxSquare(BoundingBox &out) const;
+
+		Mesh &transform(const Matrix4 &);
 
 		template<class VertexAllocator, class HalfEdgeAllocator, class FaceAllocator>
 		typename FaceAllocator::ObjectType *createHalfEdgeGraph(VertexAllocator &vertexAllocator, HalfEdgeAllocator &halfEdgeAllocator, FaceAllocator &faceAllocator) const{

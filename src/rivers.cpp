@@ -1,10 +1,11 @@
 #include <unordered_set>
 #include <unordered_map>
+#include <queue>
 
 #include "rivers.h"
 #include "mesh.h"
 #include "mesh_edge_map.h"
-#include "astar.h"
+#include "mesh_triangle_map.h"
 
 using namespace motu;
 
@@ -62,7 +63,7 @@ namespace {
 	void mapDown(std::vector<int> &down, const Mesh &mesh, const MeshEdgeMap &edges) {
 		down.reserve(mesh.vertices.size());
 		for (int i = 0; i != mesh.vertices.size(); ++i) {
-			std::pair<const uint32_t*, const uint32_t*> neighbours(edges.vertex(i));
+			std::pair<const int*, const int*> neighbours(edges.vertex(i));
 			int d = -1;
 			float z = mesh.vertices[i].z;
 			while (neighbours.first != neighbours.second) {
@@ -199,7 +200,7 @@ namespace {
 
 Rivers::Rivers(const Mesh &mesh, const MeshEdgeMap &edges) {
 	std::vector<int> sources, flow, river;
-	findSources(4.0f, sources, flow, mesh, edges);
+	findSources(2.5f, sources, flow, mesh, edges);
 	mRivers.resize(sources.size());
 	int offset = 0;
 	for (int source : sources) {
@@ -219,26 +220,26 @@ Rivers::Rivers(const Rivers &rivers, const Mesh &old, const Mesh &nw, const Mesh
 	std::unordered_map<Vector2, int, Hasher<Vector2>> newMap;
 	newMap.reserve(nw.vertices.size());
 	for (int i = 0; i != nw.vertices.size(); ++i) {
-		newMap.emplace(nw.vertices[i].toVector2(), i);
+		newMap.emplace(nw.vertices[i].asVector2(), i);
 	}
 	mRivers.resize(rivers.rivers().size());
 	for (int i = 0; i != rivers.rivers().size(); ++i){
 		const River &oldRiver = rivers.rivers()[i];
 		River &river = mRivers[i];
 		river.reserve((oldRiver.size() << 1) - 1);
-		int a = newMap[old.vertices[oldRiver[0].first].toVector2()];
+		int a = newMap[old.vertices[oldRiver[0].first].asVector2()];
 		river.emplace_back(a, oldRiver[0].second);
 		for (int j = 1; j < oldRiver.size(); ++j) {
 			int b = a;
 			int flow = oldRiver[j].second;
-			a = newMap[old.vertices[oldRiver[j].first].toVector2()];
+			a = newMap[old.vertices[oldRiver[j].first].asVector2()];
 			river.emplace_back(findJoinVertex(edges, nw, b, a), flow);
 			river.emplace_back(a, flow);
 		}
 	}
 }
 
-void Rivers::carveInto(Mesh &mesh, const MeshEdgeMap &em, float depthMultiplier) const{
+void Rivers::carveInto(Mesh &mesh, const MeshEdgeMap &em, float depthMultiplier, float maxGradient) const{
 	int maxFlow = 0;
 	std::vector<std::pair<int, float>> adjustments;
 	int count = 0;
@@ -264,11 +265,30 @@ void Rivers::carveInto(Mesh &mesh, const MeshEdgeMap &em, float depthMultiplier)
 	for (int ix : shortToLongest) {
 		const River &river = mRivers[ix];
 		for (int i = 0; i < river.size(); ++i) {
-			adjustments.emplace_back(river[i].first, findLowestNeighbourZ(river[i].first, mesh, em) - (sqrtf(river[i].second) * depthMultiplier));
+			float depth = sqrtf(river[i].second) * depthMultiplier;
+			adjustments.emplace_back(river[i].first, std::max(-depth, findLowestNeighbourZ(river[i].first, mesh, em) - depth));
 		}
 	}
 	for (auto i = adjustments.begin(); i != adjustments.end(); ++i) {
 		mesh.vertices[i->first].z = i->second;
+	}
+	adjustments.clear();
+	std::reverse(shortToLongest.begin(), shortToLongest.end());
+	for (int ix : shortToLongest) {
+		const River &river = mRivers[ix];
+		for (int i = river.size() - 1; i > 0; --i) {
+			//adjustments.emplace_back(river[i].first, findLowestNeighbourZ(river[i].first, mesh, em) - (sqrtf(river[i].second) * depthMultiplier));
+			const Vector3 &last = mesh.vertices[river[i - 1].first];
+			if (last.z < 0.0f) {
+				continue;
+			}
+			Vector3 shift = last - mesh.vertices[river[i].first];
+			float length = shift.asVector2().magnitude();
+			float slope = shift.z / length;
+			if (slope > maxGradient) {
+				mesh.vertices[river[i].first].z -= shift.z - (length * maxGradient);
+			}
+		}
 	}
 }
 
@@ -285,6 +305,9 @@ void Rivers::smooth(Mesh &mesh, const MeshEdgeMap &edgeMap) const{
 			next = river[i].first;
 			const Vector3 &a = mesh.vertices[last], &b = mesh.vertices[current], &c = mesh.vertices[next];
 			altered.emplace_back(current, (a + b + c) / 3.0f);
+			if (c.z < 0.0f) {
+				continue;
+			}
 			auto neighbours = edgeMap.vertex(current);
 			while (neighbours.first != neighbours.second) {
 				if (*neighbours.first != last && *neighbours.first != next) {
@@ -304,4 +327,19 @@ void Rivers::smooth(Mesh &mesh, const MeshEdgeMap &edgeMap) const{
 	for (const std::pair<int, Vector3> &i : altered) {
 		mesh.vertices[i.first] = i.second;
 	}
+}
+
+Mesh &Rivers::getMesh(const River &river, Mesh &mesh, const MeshTriangleMap &triangleMap) {
+	/*int num = 0;
+	for (auto i = river.begin(); i != river.end(); ++i) {
+		auto ends = triangleMap.vertex(i->first);
+		num += ends.second - ends.first;
+	}
+	std::unordered_set<int> triangles;
+	triangles.reserve(num);
+	for (auto i = river.begin(); i != river.end(); ++i) {
+		auto ends = edgeMap.vertex(i->first);
+		num += ends.second - ends.first;
+	}*/
+	return mesh;
 }

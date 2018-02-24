@@ -8,6 +8,7 @@
 namespace motu {
 	struct Mesh;
 	class MeshEdgeMap;
+	class MeshTriangleMap;
 
 	class Rivers {
 	public:
@@ -23,7 +24,9 @@ namespace motu {
 
 		void smooth(Mesh &mesh, const MeshEdgeMap &) const;
 
-		void carveInto(Mesh &mesh, const MeshEdgeMap &, float depthMultiplier) const;
+		void carveInto(Mesh &mesh, const MeshEdgeMap &, float depthMultiplier, float maxGradient) const;
+
+		Mesh &getMesh(const River &, Mesh &, const MeshTriangleMap &);
 
 	private:
 		std::vector<River> mRivers;

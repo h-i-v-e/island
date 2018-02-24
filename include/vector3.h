@@ -20,10 +20,14 @@ namespace motu{
         Vector3() {}
 
         float x, y, z;
-        
-        Vector2 toVector2() const{
-            return Vector2(x, y);
-        }
+
+		Vector2 &asVector2() {
+			return *reinterpret_cast<Vector2*>(this);
+		}
+
+		const Vector2 &asVector2() const {
+			return *reinterpret_cast<const Vector2*>(this);
+		}
         
         Vector3 operator-(const Vector3 &other) const{
             return Vector3(x - other.x, y - other.y, z - other.z);

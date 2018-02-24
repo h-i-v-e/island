@@ -31,14 +31,9 @@ namespace {
 
 	void createInitialMesh(const std::vector<Vector2> &verts, int tesselations, Mesh &mesh) {
 		Triangulation triangulation(verts);
-		Mesh swap;
-		Mesh *meshes[2] = { &mesh, &swap };
-		copyTriangulationToMesh(triangulation, *meshes[tesselations & 1]);
-		while (tesselations > 0){
-			meshes[(tesselations ^ 1) & 1]->clear();
-			meshes[tesselations & 1]->smooth();
-			meshes[tesselations & 1]->tesselate(*meshes[(tesselations ^ 1) & 1]);
-			--tesselations;
+		copyTriangulationToMesh(triangulation, mesh);
+		while (tesselations-- > 0) {
+			mesh.tesselate();
 		}
 	}
 

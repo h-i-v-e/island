@@ -13,7 +13,7 @@ namespace {
 		float speed = 0.0f, carrying = 0.0f, lowest = next->z;
 		while (true) {
 			int down = -1;
-			std::pair<const uint32_t *, const uint32_t *> neighbours(edgeMap.vertex(offset));
+			std::pair<const int *, const int *> neighbours(edgeMap.vertex(offset));
 			while (neighbours.first != neighbours.second){
 				const Vector3 &vert = mesh.vertices[*neighbours.first];
 				if (vert.z < lowest) {

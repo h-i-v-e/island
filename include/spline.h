@@ -29,6 +29,10 @@ namespace motu{
 			return endB - endA;
 		}
 
+		Spline pair() const{
+			return Spline(endB, endA);
+		}
+
 		Spline operator + (const Vector3 &vec) const {
 			return Spline(endA + vec, endB + vec);
 		}

@@ -17,7 +17,7 @@ namespace motu{
     struct Edge{
         Edge(){}
         
-        Edge(Vector2 endA, Vector2 endB) : endA(endA), endB(endB){}
+        Edge(const Vector2 &endA, const Vector2 &endB) : endA(endA), endB(endB){}
         
         Edge(float ax, float ay, float bx, float by) : endA(ax, ay), endB(bx, by) {}
 

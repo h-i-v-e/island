@@ -2,7 +2,7 @@
 #define HYDROLIC_EROSIAN_H
 
 namespace motu {
-	class Mesh;
+	struct Mesh;
 	class MeshEdgeMap;
 
 	Mesh &applyHydrolicErosian(Mesh &mesh, const MeshEdgeMap &edgeMap, int iterations);

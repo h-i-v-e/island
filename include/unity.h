@@ -2,29 +2,52 @@
 #define UINTY_H
 
 #include <cstdint>
+#ifdef _WIN32
+#define EXPORT_TO_UNITY __declspec(dllexport)
+#else
+#define EXPORT_TO_UNITY
+#endif
 
 extern "C" {
-	struct Motu {
-		void *data;
-		uint32_t *normalMap;
-		uint8_t *occlusianMap;
+
+	struct Vector3Export {
+		float x, y, z;
 	};
 
-	struct MotuMesh {
-		void *data;
-		float *vertices;
-		uint32_t numVertices;
-		uint32_t *triangles;
-		uint32_t numTriangles;
+	struct Vector3ExportArray {
+		const Vector3Export *data;
+		int length;
 	};
 
-	MotuMesh *MotuGetMesh(Motu *, int lod, float ux, float uy, float uz, float lx, float ly, float lz);
+	struct TriangleExportArray {
+		const int *data;
+		int length;
+	};
 
-	void MotuFreeMesh(MotuMesh *mesh);
+	struct ExportArea {
+		Vector3Export min, max;
+	};
 
-	Motu *MotuAllocateIsland(int seed);
+	struct ExportMesh {
+		void *handle;
+		Vector3ExportArray vertices, normals;
+		TriangleExportArray triangles;
+	};
 
-	void MotuReleaseIsland(Motu *);
+	struct ExportTextures {
+		const uint32_t *texture;
+		const uint16_t *albedo;
+	};
+
+	EXPORT_TO_UNITY void *CreateMotu(int seed);
+
+	EXPORT_TO_UNITY void FetchTextures(void *, ExportTextures *);
+
+	EXPORT_TO_UNITY void ReleaseMotu(void *);
+
+	EXPORT_TO_UNITY void CreateMesh(void *, const ExportArea *, int lod, ExportMesh *);
+
+	EXPORT_TO_UNITY void ReleaseMesh(ExportMesh *);
 }
 
 #endif

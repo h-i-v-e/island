@@ -1,11 +1,14 @@
 #ifndef BOUNDING_BOX_H
 #define BOUNDING_BOX_H
 
-#include "vector3.h"
+#include <limits>
+
 #include "triangle3.h"
 
 namespace motu {
 	struct BoundingBox {
+		typedef Vector3 VectorType;
+
 		Vector3 upper, lower;
 
 		BoundingBox() {}
@@ -19,12 +22,61 @@ namespace motu {
 				(c <= (a + FLT_EPSILON) && c >= (b - FLT_EPSILON));
 		}
 
+		void clear() {
+			upper.x = upper.y = upper.z = std::numeric_limits<float>::max();
+			lower.x = lower.y = lower.z = std::numeric_limits<float>::min();
+		}
+
+		BoundingBox &operator+= (const Vector3 &pt) {
+			if (pt.x < upper.x) {
+				upper.x = pt.x;
+			}
+			if (pt.x > lower.x) {
+				lower.x = pt.x;
+			}
+			if (pt.y < upper.y) {
+				upper.y = pt.y;
+			}
+			if (pt.y > lower.y) {
+				lower.y = pt.y;
+			}
+			if (pt.z < upper.z) {
+				upper.z = pt.z;
+			}
+			if (pt.z > lower.z) {
+				lower.z = pt.z;
+			}
+		}
+
+		BoundingBox operator + (const BoundingBox &box) const {
+			return BoundingBox(
+				std::min(upper.x, box.upper.x), std::min(upper.y, box.upper.y), std::min(upper.z, box.upper.z),
+				std::max(lower.x, box.lower.x), std::max(lower.y, box.lower.y), std::max(lower.z, box.lower.z)
+			);
+		}
+
+		constexpr float width() const {
+			return lower.x - upper.x;
+		}
+
+		constexpr float height() const {
+			return lower.y - upper.y;
+		}
+
+		constexpr float depth() const {
+			return lower.z - upper.z;
+		}
+
+		float area() const {
+			return width() * height() * depth();
+		}
+
 		void getPlanes(Plane *planes) const {
-			for (size_t i = 0; i != 3; ++i) {
+			for (int i = 0; i != 3; ++i) {
 				planes[i].point = lower;
 				planes[i + 3].point = upper;
 			}
-			for (size_t i = 0; i != 6; i += 3) {
+			for (int i = 0; i != 6; i += 3) {
 				planes[i].normal = Vector3::unitX();
 				planes[i + 1].normal = Vector3::unitY();
 				planes[i + 2].normal = Vector3::unitZ();
@@ -38,7 +90,7 @@ namespace motu {
 		}
 
 		bool intersects(const Triangle3 &t3) const {
-			for (size_t i = 0; i != 3; ++i) {
+			for (int i = 0; i != 3; ++i) {
 				if (contains(t3.vertices[i])) {
 					return true;
 				}
@@ -47,8 +99,8 @@ namespace motu {
 			t3.getSplines(splines);
 			Plane planes[6];
 			getPlanes(planes);
-			for (size_t i = 0; i != 6; ++i) {
-				for (size_t j = 0; j != 3; ++j) {
+			for (int i = 0; i != 6; ++i) {
+				for (int j = 0; j != 3; ++j) {
 					if (splines[i].intersects(planes[j])) {
 						return true;
 					}
@@ -57,8 +109,13 @@ namespace motu {
 			return false;
 		}
 
+		bool intersects(const BoundingBox &other) const{
+			return contains(other.lower) || contains(other.upper) ||
+				other.contains(lower) || other.contains(upper);
+		}
+
 		bool contains(const Triangle3 &t3) const {
-			for (size_t i = 0; i != 3; ++i) {
+			for (int i = 0; i != 3; ++i) {
 				if (!contains(t3.vertices[i])) {
 					return false;
 				}

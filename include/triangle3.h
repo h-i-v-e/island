@@ -34,13 +34,13 @@ namespace motu{
 		Triangle toTriangle2() const{
 			Triangle out;
 			for (size_t i = 0; i != 3; ++i) {
-				out.vertices[i] = vertices[i].toVector2();
+				out.vertices[i] = vertices[i].asVector2();
 			}
 			return out;
 		}
         
         Vector3 normal() const{
-            return (vertices[1] - vertices[0]).cross(vertices[2] - vertices[0])/*.normalized()*/;
+            return (vertices[1] - vertices[0]).cross(vertices[2] - vertices[0]);
         }
         
         void getSplines(Spline *splines) const{
@@ -165,7 +165,7 @@ namespace motu{
 			return out;
 		}
 
-		Vector3 baricentre() const{
+		Vector3 baricentre() const {
 			Vector3 total(0.0f, 0.0f, 0.0f);
 			for (size_t i = 0; i != 3; total += vertices[i++]);
 			return total / 3.0f;

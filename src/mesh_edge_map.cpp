@@ -4,12 +4,12 @@
 using namespace motu;
 
 MeshEdgeMap::MeshEdgeMap(const Mesh &mesh) {
-	typedef std::pair<uint32_t, uint32_t> Edges;
+	typedef std::pair<int, int> Edges;
 	vertices = new Edges[mesh.vertices.size()];
-	size_t total = 0;
-	for (size_t i = 2; i < mesh.triangles.size(); i += 3) {
-		for (size_t j = i - 2; j <= i; ++j) {
-			for (size_t k = i - 2; k <= i; ++k) {
+	int total = 0;
+	for (int i = 2; i < mesh.triangles.size(); i += 3) {
+		for (int j = i - 2; j <= i; ++j) {
+			for (int k = i - 2; k <= i; ++k) {
 				if (j != k) {
 					++vertices[mesh.triangles[k]].second;
 					++total;
@@ -17,16 +17,16 @@ MeshEdgeMap::MeshEdgeMap(const Mesh &mesh) {
 			}
 		}
 	}
-	neighbourBuffer = new uint32_t[total];
+	neighbourBuffer = new int[total];
 	total = 0;
-	for (size_t i = 0; i != mesh.vertices.size(); ++i) {
+	for (int i = 0; i != mesh.vertices.size(); ++i) {
 		vertices[i].first = total;
 		total += vertices[i].second;
 		vertices[i].second = vertices[i].first;
 	}
-	for (size_t i = 2; i < mesh.triangles.size(); i += 3) {
-		for (size_t j = i - 2; j <= i; ++j) {
-			for (size_t k = i - 2; k <= i; ++k) {
+	for (int i = 2; i < mesh.triangles.size(); i += 3) {
+		for (int j = i - 2; j <= i; ++j) {
+			for (int k = i - 2; k <= i; ++k) {
 				if (j != k) {
 					neighbourBuffer[vertices[mesh.triangles[k]].second++] = mesh.triangles[j];
 				}
