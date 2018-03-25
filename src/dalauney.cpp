@@ -100,7 +100,7 @@ namespace {
 }
 
 Mesh &motu::createDalauneyMesh(const std::vector<Vector3> &vertices, Mesh &out) {
-	int expectedTriangles = vertices.size() - 2;
+	int expectedTriangles = static_cast<int>(vertices.size() - 2);
 	RTree rTree(expectedTriangles);
 	TriangleWithCircumcircle super(CreateBoundingTriangle(vertices));
 	rTree.add(super.circumcircle.boundingRectangle(), super);
@@ -120,7 +120,7 @@ Mesh &motu::createDalauneyMesh(const std::vector<Vector3> &vertices, Mesh &out) 
 		}
 		for (auto edge : poly) {
 			TriangleWithCircumcircle tri(Triangle3(edge.endA, edge.endB, point));
-			if (!tri.triangle.normal().z > 0.0f) {
+			if (tri.triangle.normal().z <= 0.0f) {
 				tri.triangle.flipRotation();
 			}
 			rTree.add(tri.circumcircle.boundingRectangle(), tri);

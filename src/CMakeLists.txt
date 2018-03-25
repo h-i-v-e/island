@@ -1,12 +1,14 @@
 set(sources
 	island.cpp
 	lodepng.cpp
+	triangle3.cpp
 	mesh.cpp
 	mesh_edge_map.cpp
 	mesh_triangle_map.cpp
 	raster.cpp
 	simplex_noise.cpp
 	terrain.cpp
+	lake.cpp
 	hydrolic_erosian.cpp
 	sea_erosian.cpp
 	rivers.cpp

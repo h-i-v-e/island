@@ -17,6 +17,7 @@
 #include "colour.h"
 #include "raster.h"
 #include "sea_erosian.h"
+#include "lake.h"
 
 using namespace motu;
 
@@ -75,14 +76,14 @@ namespace {
 	};
 
 	template <class DistanceTo>
-	float ComputeDistanceTo(const Mesh &mesh, const MeshEdgeMap &edges, const std::vector<bool> &sea, std::vector<float> &distanceVec, DistanceTo dt, float addMul) {
+	float ComputeDistanceTo(const Mesh &mesh, const MeshEdgeMap &edges, const std::vector<bool> &sea, std::vector<float> &distanceVec, DistanceTo dt, const Island::Options &options) {
 		typedef std::stack<int> Stack;
 
 		Stack circles[2];
 		Stack *last = circles;
 		Stack *next = circles + 1;
 
-		float distance = 0.0f, add = 0.5f;
+		float distance = options.coastalSlopeMultiplier, add = 0.5f;
 		for (int i = 0; i != mesh.vertices.size(); ++i) {
 			auto neighbours = edges.vertex(i);
 			while (neighbours.first != neighbours.second){
@@ -94,7 +95,7 @@ namespace {
 			}
 		}
 		do {
-			add *= addMul;
+			add *= options.slopeMultiplier;
 			distance += add;
 			while (!last->empty()) {
 				int i = last->top();
@@ -119,6 +120,16 @@ namespace {
 		float mul = maxZ / maxDistance;
 		for (int i = 0; i != vertices.size(); ++i) {
 			vertices[i].z = (distanceToSea[i] - distanceToLand[i]) * mul;
+		}
+	}
+
+	void addNoise(Mesh &mesh, std::default_random_engine &rnd, float scale, float maxZShift) {
+		std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+		NoiseLayer noise(Vector2(dis(rnd), dis(rnd)), scale);
+		for (Vector3 &vert : mesh.vertices) {
+			if (vert.z > 0.0f) {
+				vert.z += noise.getPlusMinus(vert.asVector2()) * maxZShift;
+			}
 		}
 	}
 
@@ -150,8 +161,8 @@ namespace {
 			}
 		}
 		RemoveLakes(seas, terrain, edges);
-		float maxHeight = ComputeDistanceTo(terrain, edges, seas, distanceToSea, DistanceToSea(), options.slopeMultiplier);
-		ComputeDistanceTo(terrain, edges, seas, distanceToLand, DistanceToLand(), 0.75f);
+		float maxHeight = ComputeDistanceTo(terrain, edges, seas, distanceToSea, DistanceToSea(), options);
+		ComputeDistanceTo(terrain, edges, seas, distanceToLand, DistanceToLand(), options);
 
 		setZValues(terrain.vertices, distanceToSea, distanceToLand, maxHeight, maxZ);
 		return maxHeight;
@@ -178,9 +189,9 @@ namespace {
 	}
 
 	void correctZ(const Grid<Mesh::VertexAndNormal> &grid, Mesh &mesh) {
-		for (size_t i = 0; i != mesh.vertices.size(); ++i) {
-			size_t x = static_cast<size_t>(mesh.vertices[i].x * grid.width());
-			size_t y = static_cast<size_t>(mesh.vertices[i].y * grid.height());
+		for (int i = 0; i != mesh.vertices.size(); ++i) {
+			int x = static_cast<int>(mesh.vertices[i].x * grid.width());
+			int y = static_cast<int>(mesh.vertices[i].y * grid.height());
 			if (x < 0) {
 				x = 0;
 			}
@@ -221,7 +232,7 @@ namespace {
 			return toColour32(pallete.sand);
 		}
 		if (van.vertex.z > 0.05f) {
-			return toColour32(pallete.mountain);
+			return toColour32(pallete.mountain * slope + (pallete.cliff * (1.0f - slope)));
 		}
 		else {
 			float rock = van.vertex.z * 20.0f;
@@ -241,6 +252,7 @@ namespace {
 
 	void correctLodsAndGenerateMaps(Mesh *lods, Island::NormalAndOcclusianMap &nao, Island::AlbedoMap &albedo, const Island::Pallete &pallete, const Rivers &rivers) {
 		Grid<Mesh::VertexAndNormal> grid(MOTU_TEXTURE_MAP_SIZE, MOTU_TEXTURE_MAP_SIZE);
+		//Raster raster(MOTU_TEXTURE_MAP_SIZE, MOTU_TEXTURE_MAP_SIZE);
 		Raster raster(MOTU_TEXTURE_MAP_SIZE, MOTU_TEXTURE_MAP_SIZE);
 		lods[0].calculateNormals();
 		lods[0].rasterize(grid);
@@ -248,26 +260,30 @@ namespace {
 		correctZ(grid, lods[2]);
 		Grid<Vector3> normals(MOTU_TEXTURE_MAP_SIZE, MOTU_TEXTURE_MAP_SIZE);
 		Grid<uint8_t> occlusian(MOTU_TEXTURE_MAP_SIZE, MOTU_TEXTURE_MAP_SIZE);
-		for (size_t y = 0, i = 0; y != grid.height(); ++y) {
-			for (size_t x = 0; x != grid.width(); ++x, ++i) {
+		for (int y = 0, i = 0; y != grid.height(); ++y) {
+			for (int x = 0; x != grid.width(); ++x, ++i) {
 				normals.data()[i] = grid.data()[i].normal;
 				occlusian.data()[i] = computeOcclusian(grid, x, y);
 				raster.data()[i] = computeAlbedo(grid.data()[i], pallete);
 			}
 		}
 		assignNormalAndOcclusianMap(nao, lods[2], normals, occlusian);
-		for (const Rivers::River &river : rivers.rivers()) {
-			auto i = river.begin();
+		for (const auto &river : rivers.riverList()) {
+			if (river->vertices.empty()) {
+				continue;
+			}
+			auto i = river->vertices.begin();
 			Vector2 last = lods[1].vertices[i->first].asVector2();
-			for (++i; i != river.end(); ++i) {
+			for (++i; i != river->vertices.end(); ++i) {
 				const Vector2 &next = lods[1].vertices[i->first].asVector2();
 				raster.draw(Edge(last, next), toColour32(pallete.cliff));
 				last = next;
 			}
 		}
-		for (int i = 0; i != raster.length(); ++i) {
+		/*for (int i = 0; i != raster.length(); ++i) {
 			albedo.data()[i] = toColour16(raster.data()[i]);
-		}
+		}*/
+		std::copy(raster.data(), raster.data() + raster.length(), albedo.data());
 	}
 
 	Vector3 vector2ToVector3(const Vector2 &vec) {
@@ -299,24 +315,58 @@ namespace {
 		}
 	}
 
-	Rivers *erode(Mesh &mesh, const Island::Options &options) {
+	Rivers *erode(Mesh &mesh, const Island::Options &options, Lake::Lakes &lakes) {
 		MeshEdgeMap mep(mesh);
 		applyHydrolicErosian(mesh, mep, options.erosianPasses);
-		applySeaErosian(mep, mesh);
-		Rivers *rivers = new Rivers(mesh, mep);
+		//applySeaErosian(mep, mesh, 0.0001f);
+		//applySeaErosian(mep, mesh);
+		//Lake::findLakes(mesh, mep, lakes);
+		Rivers *rivers = new Rivers(mesh, mep, lakes, options.riverSourceSDThreshold);
+		rivers->smooth(mesh, mep);
 		rivers->carveInto(mesh, mep, 0.0f, options.maxRiverGradient);
+		//Lake::carveInto(mesh, lakes);
 		return rivers;
 	}
 
-	void erode(Rivers **river, const Mesh &old, Mesh &nw, const Island::Options &options) {
+	void erode(std::default_random_engine &rd, Rivers **river, const Mesh &old, Mesh &nw, const Island::Options &options, Lake::Lakes &lakes) {
 		MeshEdgeMap mep(nw);
+		/*lakes.clear();
+		Lake::findLakes(nw, mep, lakes);*/
+		//Rivers temp(**river, old, nw, mep, lakes);
+		addNoise(nw, rd, 32.0f, options.noiseMultiplier);
+		addNoise(nw, rd, 64.0f, options.noiseMultiplier * 0.5f);
 		applyHydrolicErosian(nw, mep, options.erosianPasses);
-		Rivers *rivers = new Rivers(**river, old, nw, mep);
+		addNoise(nw, rd, 64.0f, options.noiseMultiplier * 0.25f);
+		addNoise(nw, rd, 128.0f, options.noiseMultiplier * 0.125f);
+		/*lakes.clear();
+		Lake::findLakes(nw, mep, lakes);*/
+		//Rivers *rivers = new Rivers(**river, old, nw, mep, lakes);
+		lakes.clear();
+		Rivers *rivers = new Rivers(nw, mep, lakes, options.riverSourceSDThreshold);
 		rivers->smooth(nw, mep);
+		//applySeaErosian(mep, nw, 0.0001f);
 		rivers->carveInto(nw, mep, options.riverDepth, options.maxRiverGradient);
-		applySeaErosian(mep, nw);
+		//Lake::carveInto(nw, lakes);
 		delete *river;
 		*river = rivers;
+		//applySeaErosian(mep, nw, 0.0001f);
+	}
+
+	void finalRiverPass(Rivers **rivers, Mesh &mesh, Lake::Lakes &lakes, const Island::Options &options) {
+		delete *rivers;
+		lakes.clear();
+		MeshEdgeMap mep(mesh);
+		*rivers = new Rivers(mesh, mep, lakes, options.riverSourceSDThreshold);
+		(*rivers)->smooth(mesh, mep);
+		(*rivers)->carveInto(mesh, mep, options.riverDepth, options.maxRiverGradient);
+		Lake::carveInto(mesh, lakes);
+	}
+
+	void seaErode(Mesh &mesh, int passes) {
+		MeshEdgeMap mep(mesh);
+		applySeaErosian(mep, mesh, 0.00000002f);
+		//finalRiverPass(&rivers, lods[0], mLakes, options);
+		improveCliffs(mep, mesh);
 	}
 }
 
@@ -329,13 +379,13 @@ void Island::generateTopology(std::default_random_engine &rd, const Options &opt
 	maxHeight = generateSeas(lods[2], rd, maxZ, options);
 	lods[2].tesselate();
 	lods[2].smooth();
-	Rivers *rivers = erode(lods[2], options);
+	Rivers *rivers = erode(lods[2], options, mLakes);
 	lods[1] = lods[2];
 	lods[1].tesselate();
-	erode(&rivers, lods[2], lods[1], options);
+	erode(rd, &rivers, lods[2], lods[1], options, mLakes);
 	lods[0] = lods[1];
 	lods[0].tesselate().tesselate().smooth();
-	applySeaErosian(lods[0]);
+	seaErode(lods[0], options.erosianPasses >> 2);
 	correctLodsAndGenerateMaps(lods, mNormalAndOcclusianMap, albedo, options.pallete, *rivers);
-	delete rivers;
+	mRivers = std::unique_ptr<Rivers>(rivers);
 }

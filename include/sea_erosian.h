@@ -11,9 +11,13 @@ namespace motu {
 
 	typedef std::vector<std::unique_ptr<std::vector<std::pair<int, int>>>> Coastlines;
 
-	void applySeaErosian(Mesh &mesh);
+	void applySeaErosian(Mesh &mesh, float strength);
 
-	void applySeaErosian(const MeshEdgeMap &, Mesh &mesh);
+	void applySeaErosian(const MeshEdgeMap &, Mesh &mesh, float strength);
+
+	void improveCliffs(Mesh &mesh);
+
+	void improveCliffs(const MeshEdgeMap &, Mesh &mesh);
 
 	void mapCoastlines(const MeshEdgeMap &, const Mesh &, Coastlines &);
 }

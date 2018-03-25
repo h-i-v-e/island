@@ -85,15 +85,15 @@ namespace{
         }
         int h = grid.height(), w = grid.width();
         float stepSize = 1.0f / static_cast<float>(h);
-        for (int y = minY * h, yend = std::min(static_cast<int>(maxY * h), h - 1); y <= yend; ++y){
+        for (int y = static_cast<int>(minY * h), yend = std::min(static_cast<int>(maxY * static_cast<float>(h)), h - 1); y <= yend; ++y){
             if (y < 0){
                 continue;
             }
             float fy = static_cast<float>(y) * stepSize;
             Tri::InOut in, out;
             if (scanBounds(tri, fy, in, out)){
-                int x = in.vertex.x * w, xend = out.vertex.x * w;
-                float denom = xend - x;
+                int x = static_cast<int>(in.vertex.x * static_cast<float>(w)), xend = static_cast<int>(out.vertex.x * static_cast<float>(w));
+                float denom = static_cast<float>(xend - x);
                 if (denom == 0.0f){
 					if (x >= 0 && x < w) {
 						in.assignTo(grid(x, y));
@@ -193,8 +193,8 @@ namespace{
 		};
 	};
 
-		struct Hieght : public Triangle3{ 
-			struct InOut {
+	struct Hieght : public Triangle3{ 
+		struct InOut {
 			Vector3 vertex;
 
 			InOut() {}
@@ -218,9 +218,9 @@ namespace{
 		};
 	};
 
-	void splitTriangles(const Plane &divider, std::vector<Triangle3> &in, std::vector<Triangle3> &out) {
+	void splitTriangles(const Plane &divider, std::vector<Triangle3WithNormals> &in, std::vector<Triangle3WithNormals> &out) {
 		size_t i = out.size();
-		for (const Triangle3 &tri : in) {
+		for (const Triangle3WithNormals &tri : in) {
 			tri.slice(divider, out);
 		}
 	}
@@ -230,6 +230,18 @@ namespace{
 			mesh.vertices[mesh.triangles[offset]],
 			mesh.vertices[mesh.triangles[offset + 1]],
 			mesh.vertices[mesh.triangles[offset + 2]]
+		);
+	}
+
+	inline Triangle3WithNormals getTriangleWithNormals (const Mesh &mesh, int offset) {
+		int a = mesh.triangles[offset], b = mesh.triangles[offset + 1], c = mesh.triangles[offset + 2];
+		return Triangle3WithNormals(
+			mesh.vertices[a],
+			mesh.vertices[b],
+			mesh.vertices[c],
+			mesh.normals[a],
+			mesh.normals[b],
+			mesh.normals[c]
 		);
 	}
 
@@ -388,7 +400,7 @@ Mesh &Mesh::tesselate() {
 
 void Mesh::load(std::vector<Triangle3> &tris) {
 	std::unordered_map<Vector3, int, Hasher<Vector3>> vertexMap;
-	int numVerts = tris.size() + 2;
+	int numVerts = static_cast<int>(tris.size()) + 2;
 	vertexMap.reserve(numVerts);
 	triangles.reserve(tris.size());
 	vertices.reserve(numVerts);
@@ -400,8 +412,33 @@ void Mesh::load(std::vector<Triangle3> &tris) {
 				triangles.push_back(k->second);
 			}
 			else {
-				int pos = vertices.size();
+				int pos = static_cast<int>(vertices.size());
 				vertices.push_back(vert);
+				triangles.push_back(pos);
+				vertexMap.emplace(vert, pos);
+			}
+		}
+	}
+}
+
+void Mesh::load(std::vector<Triangle3WithNormals> &tris) {
+	std::unordered_map<Vector3, int, Hasher<Vector3>> vertexMap;
+	int numVerts = static_cast<int>(tris.size()) + 2;
+	vertexMap.reserve(numVerts);
+	triangles.reserve(tris.size());
+	vertices.reserve(numVerts);
+	normals.reserve(numVerts);
+	for (auto i = tris.begin(); i != tris.end(); ++i) {
+		for (int j = 0; j != 3; ++j) {
+			const Vector3 &vert = i->vertices[j];
+			auto k = vertexMap.find(vert);
+			if (k != vertexMap.end()) {
+				triangles.push_back(k->second);
+			}
+			else {
+				int pos = static_cast<int>(vertices.size());
+				vertices.push_back(vert);
+				normals.push_back(i->normals[j]);
 				triangles.push_back(pos);
 				vertexMap.emplace(vert, pos);
 			}
@@ -480,10 +517,10 @@ Mesh::Edges &Mesh::edges(Edges &edges) const {
 }
 
 Mesh &Mesh::slice(const BoundingBox &bounds, Mesh &out) const {
-	std::vector<Triangle3> inside, selection, split;
+	std::vector<Triangle3WithNormals> inside, selection, split;
 	inside.reserve(triangles.size() / 3);
 	for (int i = 2; i < triangles.size(); i += 3) {
-		Triangle3 tri(getTriangle(*this, i - 2));
+		Triangle3WithNormals tri(getTriangleWithNormals(*this, i - 2));
 		if (bounds.intersects(tri)) {
 			if (bounds.contains(tri)) {
 				inside.push_back(tri);
@@ -497,14 +534,14 @@ Mesh &Mesh::slice(const BoundingBox &bounds, Mesh &out) const {
 	bounds.getPlanes(planes);
 	for (int i = 0; i != 6; ++i) {
 		selection.clear();
-		for (const Triangle3 &tri : split) {
+		for (const Triangle3WithNormals &tri : split) {
 			if (tri.intersects(planes[i])) {
 				selection.push_back(tri);
 			}
 		}
 		splitTriangles(planes[i], selection, split);
 	}
-	for (const Triangle3 &tri : split) {
+	for (const Triangle3WithNormals &tri : split) {
 		if (bounds.contains(tri)) {
 			inside.push_back(tri);
 		}

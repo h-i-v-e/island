@@ -9,14 +9,17 @@
 
 #include "grid.h"
 #include "mesh.h"
+#include "lake.h"
+#include "rivers.h"
 
 namespace motu {
+
 	class Island {
 	public:
 		typedef Grid<uint32_t> NormalAndOcclusianMap;
 		typedef Grid<Vector3> NormalMap;
 		typedef Grid<uint8_t> OcclusianMap;
-		typedef Grid<uint16_t> AlbedoMap;
+		typedef Grid<uint32_t> AlbedoMap;
 
 		struct Pallete {
 			Vector3 sand, cliff, grass, mountain;
@@ -32,12 +35,15 @@ namespace motu {
 			Pallete pallete;
 			float maxRiverGradient;
 			float riverDepth;
+			float riverSourceSDThreshold;
 			float maxZ;
 			float waterRatio;
 			float slopeMultiplier;
+			float coastalSlopeMultiplier;
+			float noiseMultiplier;
 			int erosianPasses;
 
-			Options() : maxRiverGradient(0.01f), riverDepth(0.0015), maxZ(0.2f), waterRatio(0.5f), slopeMultiplier(1.1f), erosianPasses(16) {}
+			Options() : maxRiverGradient(0.01f), riverDepth(0.0025f), riverSourceSDThreshold(2.0f), maxZ(0.05f), waterRatio(0.5f), slopeMultiplier(1.1f), coastalSlopeMultiplier(1.0f), noiseMultiplier(0.0005), erosianPasses(16) {}
 		};
 
 		Island(std::default_random_engine &rnd, const Options &options) : maxZ(options.maxZ),
@@ -50,8 +56,8 @@ namespace motu {
 			return lods[offset];
 		}
 
-		const Mesh &rivers() const {
-			return mRivers;
+		const Rivers &rivers() const {
+			return *mRivers;
 		}
 
 		const AlbedoMap &albedoMap() const {
@@ -62,11 +68,17 @@ namespace motu {
 			return mNormalAndOcclusianMap;
 		}
 
+		const Lake::Lakes lakes() const {
+			return mLakes;
+		}
+
 	private:
 		float maxZ, maxHeight;
-		Mesh lods[3], mRivers;
+		Mesh lods[3];
 		NormalAndOcclusianMap mNormalAndOcclusianMap;
 		AlbedoMap albedo;
+		Lake::Lakes mLakes;
+		std::unique_ptr<Rivers> mRivers;
 
 		void generateTopology(std::default_random_engine &, const Options &);
 	};

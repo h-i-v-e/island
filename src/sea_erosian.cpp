@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <limits>
+#include <functional>
 
 using namespace motu;
 
@@ -14,9 +15,9 @@ namespace {
 		//const MeshTriangleMap mtp;
 		const Mesh *mesh;
 		std::vector<bool> visited;
-		Coastlines *coasts;
+		//Coastlines *coasts;
 
-		CoastMapper(const MeshEdgeMap &mep, const Mesh &mesh, Coastlines &coasts) : mep(&mep)/*, mtp(mesh)*/, mesh(&mesh), visited(mesh.vertices.size(), false), coasts(&coasts){
+		CoastMapper(const MeshEdgeMap &mep, const Mesh &mesh/*, Coastlines &coasts*/) : mep(&mep)/*, mtp(mesh)*/, mesh(&mesh), visited(mesh.vertices.size(), false)/*, coasts(&coasts)*/{
 		}
 
 		bool onCoast(int offset) const{
@@ -80,40 +81,78 @@ namespace {
 			return -1;
 		}
 
-		void followCoast(int offset, std::vector<std::pair<int, int>> &out) {
-			out.emplace_back(offset, /*findInlandTriangle(offset)*/-1);
+		int getSeaRatio(int last, int offset, int next) {
+			auto edges = mep->vertex(offset);
+			int sea = 0;
+			while (edges.first != edges.second) {
+				int vert = *edges.first++;
+				if (vert != last && vert != next) {
+					if (mesh->vertices[vert].z < 0.0f) {
+						++sea;
+					}
+					else {
+						--sea;
+					}
+				}
+			}
+			return sea;
+		}
+
+		void followCoast(int offset, std::vector<std::pair<int, int>> &out, std::function<int(int, int, int)> setSecond) {
+			out.emplace_back(offset, -1);
 			visited[offset] = true;
 			for (bool going = true; going;){
 				going = false;
 				auto edges = mep->vertex(offset);
 				while (edges.first != edges.second) {
-					int i = *edges.first;
+					int i = *edges.first++;
 					if ((!visited[i]) && onCoast(i)) {
-						out.emplace_back(i, /*findInlandTriangle(offset)*/-1);
+						out.emplace_back(i, -1);
 						visited[i] = true;
 						offset = i;
 						going = true;
 						break;
 					}
-					++edges.first;
+					//++edges.first;
 				}
 			}
 			if (out.size() < 3) {
 				return;
 			}
 			for (int i = 2; i != out.size(); ++i) {
-				out[i - 1].second = findInlandJoin(out[i - 2].first, out[i - 1].first, out[i].first);
+				out[i - 1].second = setSecond(out[i - 2].first, out[i - 1].first, out[i].first);
 			}
 		}
 
-		void findCoasts() {
+		void followCoastWithJoins(int offset, std::vector<std::pair<int, int>> &out) {
+			followCoast(offset, out, [this](int last, int current, int next) {
+				return findInlandJoin(last, current, next);
+			});
+		}
+
+		void followCoastWithSeaCount(int offset, std::vector<std::pair<int, int>> &out) {
+			followCoast(offset, out, [this](int last, int current, int next) {
+				return getSeaRatio(last, current, next);
+			});
+		}
+		
+		void findCoasts(Coastlines &coasts, std::function<void(int offset, std::vector<std::pair<int, int>> &out)> func) {
+			for (int i = 0; i != mesh->vertices.size(); ++i) {
+				if ((!visited[i]) && onCoast(i)) {
+					coasts.emplace_back(std::make_unique<std::vector<std::pair<int, int>>> ());
+					func(i, *coasts.back());
+				}
+			}
+		}
+
+		/*void findCoasts() {
 			for (int i = 0; i != mesh->vertices.size(); ++i) {
 				if ((!visited[i]) && onCoast(i)) {
 					coasts->emplace_back(std::make_unique<std::vector<std::pair<int, int>>>());
 					followCoast(i, *coasts->back());
 				}
 			}
-		}
+		}*/
 	};
 
 	/*bool isCliff(const Vector2 &a, const Vector2 &b, const Vector2 &c, const Vector2 &land) {
@@ -122,14 +161,17 @@ namespace {
 }
 
 void motu::mapCoastlines(const MeshEdgeMap &mep, const Mesh &mesh, Coastlines &coastlines) {
-	CoastMapper(mep, mesh, coastlines).findCoasts();
+	CoastMapper coastMapper(mep, mesh);
+	coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &out) {
+		coastMapper.followCoastWithJoins(offset, out);
+	});
 }
 
-void motu::applySeaErosian(Mesh &mesh) {
-	applySeaErosian(MeshEdgeMap(mesh), mesh);
+void motu::improveCliffs(Mesh &mesh) {
+	improveCliffs(MeshEdgeMap(mesh), mesh);
 }
 
-void motu::applySeaErosian(const MeshEdgeMap &mep, Mesh &mesh) {
+void motu::improveCliffs(const MeshEdgeMap &mep, Mesh &mesh) {
 	Coastlines coastlines;
 	mapCoastlines(mep, mesh, coastlines);
 	/*for (const auto &i : coastlines) {
@@ -167,6 +209,30 @@ void motu::applySeaErosian(const MeshEdgeMap &mep, Mesh &mesh) {
 				shift *= 0.75;
 				mesh.vertices[j.second] += shift;
 				mesh.vertices[j.first].z = 0.0f;
+			}
+		}
+	}
+}
+
+void motu::applySeaErosian(Mesh &mesh, float strength) {
+	applySeaErosian(MeshEdgeMap(mesh), mesh, strength);
+}
+
+void motu::applySeaErosian(const MeshEdgeMap &mep, Mesh &mesh, float strength) {
+	Coastlines coastlines;
+	CoastMapper coastMapper(mep, mesh);
+	coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &section) {
+		coastMapper.followCoastWithSeaCount(offset, section);
+	});
+	for (const auto &i : coastlines) {
+		for (const auto &j : *i) {
+			if (j.second > 0){
+				float z = mesh.vertices[j.first].z;
+				if (z < FLT_EPSILON) {
+					mesh.vertices[j.first].z = -FLT_EPSILON;
+					continue;
+				}
+				mesh.vertices[j.first].z = std::max(-FLT_EPSILON, z - static_cast<float>(j.second) * strength / z);
 			}
 		}
 	}

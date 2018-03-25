@@ -14,6 +14,23 @@ extern "C" {
 		float x, y, z;
 	};
 
+	struct MotuPallete {
+		Vector3Export sand, cliff, grass, mountain;
+	};
+
+	struct MotuOptions {
+		MotuPallete pallete;
+		float maxRiverGradient;
+		float riverDepth;
+		float riverSourceSDThreshold;
+		float maxZ;
+		float waterRatio;
+		float slopeMultiplier;
+		float coastalSlopeMultiplier;
+		float noiseMultiplier;
+		int erosianPasses;
+	};
+
 	struct Vector3ExportArray {
 		const Vector3Export *data;
 		int length;
@@ -36,10 +53,10 @@ extern "C" {
 
 	struct ExportTextures {
 		const uint32_t *texture;
-		const uint16_t *albedo;
+		const uint32_t *albedo;
 	};
 
-	EXPORT_TO_UNITY void *CreateMotu(int seed);
+	EXPORT_TO_UNITY void *CreateMotu(int seed, const MotuOptions *);
 
 	EXPORT_TO_UNITY void FetchTextures(void *, ExportTextures *);
 

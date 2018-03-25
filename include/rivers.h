@@ -4,21 +4,31 @@
 #include <utility>
 #include <cstdint>
 #include <vector>
+#include <memory>
+#include <unordered_set>
+
+#include "lake.h"
 
 namespace motu {
 	struct Mesh;
 	class MeshEdgeMap;
-	class MeshTriangleMap;
+	struct MeshTriangleMap;
+
+	struct River {
+		typedef std::vector<std::pair<int, int>> Vertices;
+		typedef std::shared_ptr<River> Ptr;
+
+		Vertices vertices;
+		int join;
+	};
 
 	class Rivers {
 	public:
-		typedef std::vector<std::pair<int, int>> River;
+		typedef std::vector<River::Ptr> RiverList;
 
-		Rivers(const Mesh &mesh, const MeshEdgeMap &);
+		Rivers(Mesh &mesh, const MeshEdgeMap &, Lake::Lakes &lakes, float flowSDthreshold = 3.0f);
 
-		Rivers(const Rivers &rivers, const Mesh &old, const Mesh &nw, const MeshEdgeMap &);
-
-		const std::vector<River> &rivers() const{
+		const RiverList &riverList() const{
 			return mRivers;
 		}
 
@@ -27,9 +37,8 @@ namespace motu {
 		void carveInto(Mesh &mesh, const MeshEdgeMap &, float depthMultiplier, float maxGradient) const;
 
 		Mesh &getMesh(const River &, Mesh &, const MeshTriangleMap &);
-
 	private:
-		std::vector<River> mRivers;
+		RiverList mRivers;
 	};
 }
 

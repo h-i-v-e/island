@@ -25,6 +25,7 @@
 #include "mesh_edge_map.h"
 #include "colour.h"
 #include "sea_erosian.h"
+#include "mesh_triangle_map.h"
 
 using namespace motu;
 using namespace std;
@@ -120,6 +121,7 @@ TEST_CASE("Continent", "Continent"){
 	/*Grid<float> heightMap(2048, 2048);
 	island.lod(2).rasterize(heightMap);*/
 	Raster raster(2048, 2048);
+	raster.fill(0xffffff);
 	Vector3 sun(0.0f, 0.5f, 1.0f);
 	sun.normalize();
 	/*float mul = 1.0f / 255.0f, muln = 1.0f / 127.5f, seaMul = 1.0f / 0.002f;
@@ -150,7 +152,10 @@ TEST_CASE("Continent", "Continent"){
 	/*Island::NormalAndOcclusianMap nom(2048, 2048);
 	island.normalAndOcclusianMap(2, nom);*/
 	Grid<Vector3> normals(2048, 2048);
-	island.lod(2).rasterizeNormalsOnly(normals);
+	Mesh sliced;
+	island.lod(2).slice(BoundingBox(Vector3(0.0f, 0.0f, -1.0f), Vector3(1.0f, 1.0f, 1.0f)), sliced);
+	//island.lod(2).rasterizeNormalsOnly(normals);
+	sliced.rasterizeNormalsOnly(normals);
 	static float occlusianMul = 1.0f / 255.0f;
 	for (int i = 0, j = 2048 * 2048; i != j;  ++i) {
 		//raster.data()[i] = nom.data()[i];
@@ -162,6 +167,18 @@ TEST_CASE("Continent", "Continent"){
 		Vector3 colour = toColourV3(island.albedoMap().data()[i]) * sun.dot(normal) * occlusian;
 		raster.data()[i] = toColour32(colour);
 	}
+	/*Mesh lakeMesh;
+	for (const Lake::Ptr &lake : island.lakes()) {
+		lake->createMesh(island.lod(1), MeshTriangleMap(island.lod(1)), lakeMesh);
+		raster.draw(lakeMesh, 0x0000ff);*/
+		/*for (const std::shared_ptr<Rivers::River> &river : island.rivers().riverList()) {
+			if (river->front().first == lake->outflow) {
+				for (int i = 1; i < river->size(); ++i) {
+					raster.draw(Edge(island.lod(1).vertices[(*river)[i - 1].first].asVector2(), island.lod(1).vertices[(*river)[i].first].asVector2()), 0xff0000);
+				}
+			}
+		}*/
+	//}
 	
 	/*Coastlines coastlines;
 	mapCoastlines(island.lod(2), coastlines);

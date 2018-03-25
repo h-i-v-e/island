@@ -21,10 +21,14 @@ namespace motu{
         NoiseLayer(const Vector2 &offset, float scale) : offset(offset), scale(scale){}
         
         NoiseLayer(){}
+
+		float getPlusMinus(const Vector2 &pos) const{
+			Vector2 adjusted((pos + offset) * scale);
+			return SimplexNoise::noise(adjusted.x, adjusted.y);
+		}
         
         float get(const Vector2 &pos) const{
-            Vector2 adjusted((pos + offset) * scale);
-            return (1.0f + SimplexNoise::noise(adjusted.x, adjusted.y)) * 0.5f;
+            return (1.0f + getPlusMinus(pos)) * 0.5f;
         }
     };
 }

@@ -38,7 +38,7 @@ namespace motu {
 
 	inline Vector3 toColourV3(uint32_t colour) {
 		static float mul = 1.0f / 255.0f;
-		return Vector3((colour >> 16) * mul, ((colour >> 8) & 0xff00) * mul, (colour & 0xff) * mul);
+		return Vector3(((colour >> 16) & 0xff) * mul, ((colour >> 8) & 0xff) * mul, (colour & 0xff) * mul);
 	}
 
 	inline Vector3 toColourV3(uint16_t colour) {

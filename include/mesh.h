@@ -65,6 +65,8 @@ namespace motu{
 
 		void load(std::vector<Triangle3> &triangles);
 
+		void load(std::vector<Triangle3WithNormals> &triangles);
+
 		struct VertexAndNormal {
 			Vector3 vertex, normal;
 		};

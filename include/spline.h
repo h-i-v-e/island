@@ -80,6 +80,28 @@ namespace motu{
 			return (endA.hash() * 7) ^ (endB.hash() * 3);
 		}
     };
+
+	struct SplineWithNormals : public Spline {
+		Vector3 normalA, normalB;
+
+		SplineWithNormals() {}
+
+		SplineWithNormals(const Vector3 &endA, const Vector3 &endB, const Vector3 &normalA, const Vector3 &normalB) : Spline(endA, endB), normalA(normalA), normalB(normalB) {
+		}
+
+		bool intersects(const Plane &plane, Vector3 &at, Vector3 &normal) const{
+			Vector3 dir(direction());
+			float t;
+			if (plane.intersectionTime(endA, dir, t)) {
+				if (t >= 0.0f && t <= 1.0f) {
+					at = endA + (dir * t);
+					normal = (normalA * (1.0f - t)) + (normalB * t);
+					return true;
+				}
+			}
+			return false;
+		}
+	};
 }
 
 #endif /* spline_h */
