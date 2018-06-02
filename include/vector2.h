@@ -18,6 +18,8 @@ namespace motu {
         Vector2(){}
         
         Vector2(float x, float y) : x(x), y(y){}
+
+		Vector2(int x, int y) : x(static_cast<float>(x)), y(static_cast<float>(y)) {}
         
         static Vector2 zero(){
 			return Vector2(0.0f, 0.0f);
@@ -101,6 +103,10 @@ namespace motu {
             }
             return x < other.x;
         }
+
+		Vector2 perp() const {
+			return Vector2(-y, x);
+		}
         
         constexpr float dot(const Vector2 &other) const{
             return x * other.x + y * other.y;

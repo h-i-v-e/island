@@ -85,6 +85,12 @@ namespace motu{
 
 		void rasterizeNormalsOnly(Grid<Vector3> &) const;
 
+		void translate(const Vector3 &by) {
+			for (Vector3 &vert : vertices) {
+				vert += by;
+			}
+		}
+
 		//height map only
 		void rasterize(Grid<float> &) const;
 
@@ -98,6 +104,15 @@ namespace motu{
 		}
 
 		Mesh &slice(const BoundingBox &bounds, Mesh &out) const;
+
+		enum Side {
+			TOP = 1,
+			LEFT = 2,
+			BOTTOM = 4,
+			RIGHT = 8
+		};
+
+		Mesh &slice(const BoundingBox &bounds, uint8_t sides, const Mesh &clampMesh, Mesh &out) const;
 
 		Mesh &tesselate();
 
@@ -118,6 +133,12 @@ namespace motu{
 			return vmap.bind();
 		}
     };
+
+	struct MeshWithUV : public Mesh{
+		typedef std::vector<Vector2> Uv;
+
+		Uv uv;
+	};
 }
 
 #endif /* mesh_h */

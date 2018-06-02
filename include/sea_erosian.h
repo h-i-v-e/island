@@ -20,6 +20,12 @@ namespace motu {
 	void improveCliffs(const MeshEdgeMap &, Mesh &mesh);
 
 	void mapCoastlines(const MeshEdgeMap &, const Mesh &, Coastlines &);
+
+	void smoothCoastlines(const MeshEdgeMap &, Mesh &);
+
+	void eatCoastlines(const MeshEdgeMap &, Mesh &);
+
+	void formBeaches(const MeshEdgeMap &, Mesh &);
 }
 
 #endif

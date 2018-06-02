@@ -5,6 +5,7 @@ set(sources
 	mesh.cpp
 	mesh_edge_map.cpp
 	mesh_triangle_map.cpp
+	height_map.cpp
 	raster.cpp
 	simplex_noise.cpp
 	terrain.cpp
@@ -13,8 +14,9 @@ set(sources
 	sea_erosian.cpp
 	rivers.cpp
 	dalauney.cpp
+	quantize_river.cpp
+	unity.cpp
 )
 
-add_library(motu SHARED ${sources} unity.cpp)
+add_library(motu SHARED ${sources})
 add_library(motu_static STATIC ${sources})
-#set_target_properties(motu PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/libs")

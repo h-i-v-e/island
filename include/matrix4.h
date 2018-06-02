@@ -9,6 +9,10 @@ namespace motu {
 
 		struct Vector4 {
 			float data[4];
+
+			const Vector3 &asVector3() const {
+				return *reinterpret_cast<const Vector3*>(data);
+			}
 		};
 
 		static Vector4 asPoint(const Vector3 &vec) {
@@ -24,7 +28,7 @@ namespace motu {
 			for (int i = 0; i != 4; ++i) {
 				float total = 0.0f;
 				for (int j = 0; j != 4; ++j) {
-					total += data[i][j];
+					total += data[i][j] * vec.data[j];
 				}
 				out.data[i] = total;
 			}
@@ -46,7 +50,7 @@ namespace motu {
 				for (int j = 0; j != 4; ++j) {
 					float total = 0.0f;
 					for (int k = 0; k != 4; ++k) {
-						total += data[i][k] * data[k][j];
+						total += data[i][k] * o.data[k][j];
 					}
 					out.data[i][j] = total;
 				}
@@ -63,7 +67,26 @@ namespace motu {
 			};
 		}
 
-		static Matrix4 translate(Vector3 amount) {
+		Matrix4 transposed() {
+			Matrix4 out;
+			for (int i = 0; i != 4; ++i) {
+				for (int j = 0; j != 4; ++j) {
+					out.data[j][i]= data[i][j];
+				}
+			}
+			return out;
+		}
+
+		static Matrix4 scale(const Vector3 &amount) {
+			return {
+				amount.x, 0.0f, 0.0f, 0.0f,
+				0.0f, amount.y, 0.0f, 0.0f,
+				0.0f, 0.0f, amount.z, 0.0f,
+				0.0f, 0.0f, 0.0f, 1.0f
+			};
+		}
+
+		static Matrix4 translate(const Vector3 &amount) {
 			return {
 				1.0f, 0.0f, 0.0f, amount.x,
 				0.0f, 1.0f, 0.0f, amount.y,

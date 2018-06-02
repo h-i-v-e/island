@@ -271,19 +271,19 @@ namespace {
 			for (size_t i = 0; i != rivers.size(); ++i) {
 				const River &river = *rivers[i];
 				for (int j = 0; j != river.vertices.size() - 1; ++j) {
-					verts.emplace(river.vertices[j].first, i);
+					verts.emplace(river.vertices[j].index, i);
 				}
 			}
 			for (size_t i = 0; i != rivers.size(); ++i) {
 				River &river = *rivers[i];
-				auto j = verts.find(river.vertices.back().first);
+				auto j = verts.find(river.vertices.back().index);
 				if (j != verts.end()) {
 					River &downStream = *rivers[j->second];
-					int join = downStream.vertices.front().first;
+					int join = downStream.vertices.front().index;
 					if (join == j->first) {
 						verts[join] = i;
 						for (int k = 1; k < downStream.vertices.size(); ++k) {
-							verts[downStream.vertices[k].first] = i;
+							verts[downStream.vertices[k].index] = i;
 							river.vertices.push_back(downStream.vertices[k]);
 						}
 						removed.insert(j->second);
@@ -388,7 +388,7 @@ namespace {
 	}
 }
 
-Rivers::Rivers(Mesh &mesh, const MeshEdgeMap &edges, Lake::Lakes &lakes, float flowSDthreshold) {
+Rivers::Rivers(Mesh &mesh, const MeshEdgeMap &edges, Lake::Lakes &lakes, float depthMul, float flowSDthreshold) {
 	fixInlandSeas(mesh, edges);
 	std::vector<int> sources, flow, river;
 	std::unordered_set<int> bottoms, in;
@@ -400,41 +400,65 @@ Rivers::Rivers(Mesh &mesh, const MeshEdgeMap &edges, Lake::Lakes &lakes, float f
 		emplaceRiver(0, flow, river, mRivers);
 	}
 	mergeRivers(mRivers);
-}
-
-void Rivers::carveInto(Mesh &mesh, const MeshEdgeMap &em, float depthMultiplier, float maxGradient) const{
 	int maxFlow = 0;
 	for (const auto &river : mRivers) {
 		if (river->vertices.empty()) {
 			continue;
 		}
-		if (river->vertices.back().second > maxFlow) {
-			maxFlow = river->vertices.back().second;
+		if (river->vertices.back().flow > maxFlow) {
+			maxFlow = river->vertices.back().flow;
 		}
 	}
-	if (maxFlow == 0) {
-		return;
-	}
-	depthMultiplier /= sqrtf(static_cast<float>(maxFlow));
+	depthMultiplier = depthMul / sqrtf(static_cast<float>(maxFlow));
+}
+
+void Rivers::carveInto(Mesh &mesh, const MeshEdgeMap &em, float maxGradient) const{
+	Rivers::RiverList copy(mRivers.begin(), mRivers.end());
+	std::sort(copy.begin(), copy.end(), [&mesh](const auto &a, const auto &b) {
+		return mesh.vertices[a->vertices.back().index].z < mesh.vertices[b->vertices.back().index].z;
+	});
 	std::vector<float> surfaces(mesh.vertices.size(), -1.0f);
-	for (const auto &river : mRivers) {
+	for (const auto &river : copy) {
+		int i = river->vertices.size() - 1;
+		Vector3 *last = &mesh.vertices[i];
+		for (--i; i >= 0; --i) {
+			const River::Vertex &rvert = river->vertices[i];
+			Vector3 *current = &mesh.vertices[rvert.index];
+			Vector3 direction = *current - *last;
+			float mag = direction.magnitude();
+			float slope = direction.z / mag;
+			if (last->z >= 0.0f && slope > maxGradient) {
+				if (slope < 0.8f) {
+					current->z = last->z + mag * maxGradient;
+				}
+				//otherwise a waterfall.
+			}
+			last = current;
+		}
+	}
+	for (const auto &river : copy) {
 		float surface = -1.0f;
 		for (auto i = river->vertices.rbegin(); i != river->vertices.rend(); ++i) {
-			float z = mesh.vertices[i->first].z;
+			float z = mesh.vertices[i->index].z;
 			if (z > surface) {
 				surface = z;
 			}
-			surfaces[i->first] = surface;
+			surfaces[i->index] = surface;
 		}
 	}
-	for (const auto &river : mRivers) {
-		float surface = -1.0f;
+	for (const auto &river : copy){
 		for (auto i = river->vertices.begin(); i != river->vertices.end(); ++i) {
-			float z = mesh.vertices[i->first].z, surface = surfaces[i->first], target = sqrtf(static_cast<float>(i->second)) * depthMultiplier;
+			float z = mesh.vertices[i->index].z, surface = surfaces[i->index], target = sqrtf(static_cast<float>(i->flow)) * depthMultiplier;
 			float depth = surface - z;
 			if (depth < target) {
-				mesh.vertices[i->first].z -= (target - depth);
+				mesh.vertices[i->index].z -= (target - depth);
 			}
+		}
+	}
+	for (const auto &river : copy) {
+		//float surface = -1.0f;
+		for (auto i = river->vertices.begin(); i != river->vertices.end(); ++i) {
+			i->surface = surfaces[i->index] - sqrtf(static_cast<float>(i->flow)) * depthMultiplier * 0.5f;
 		}
 	}
 }
@@ -445,11 +469,11 @@ void Rivers::smooth(Mesh &mesh, const MeshEdgeMap &edgeMap) const{
 		if (river->vertices.size() < 3) {
 			continue;
 		}
-		int current = river->vertices[0].first, next = river->vertices[1].first, last;
+		int current = river->vertices[0].index, next = river->vertices[1].index, last;
 		for (int i = 2; i < river->vertices.size(); ++i) {
 			last = current;
 			current = next;
-			next = river->vertices[i].first;
+			next = river->vertices[i].index;
 			const Vector3 &a = mesh.vertices[last], &b = mesh.vertices[current], &c = mesh.vertices[next];
 			altered.emplace_back(current, (a + b + c) / 3.0f);
 			if (c.z < 0.0f) {
@@ -476,17 +500,43 @@ void Rivers::smooth(Mesh &mesh, const MeshEdgeMap &edgeMap) const{
 	}
 }
 
-Mesh &Rivers::getMesh(const River &river, Mesh &mesh, const MeshTriangleMap &triangleMap) {
-	/*int num = 0;
-	for (auto i = river.begin(); i != river.end(); ++i) {
-		auto ends = triangleMap.vertex(i->first);
+Mesh &Rivers::getMesh(const River &river, const Mesh &mesh, const MeshTriangleMap &triangleMap, Mesh &out) const{
+	int num = 0;
+	for (auto i = river.vertices.begin(); i != river.vertices.end(); ++i) {
+		auto ends = triangleMap.vertex(i->index);
 		num += ends.second - ends.first;
 	}
-	std::unordered_set<int> triangles;
-	triangles.reserve(num);
-	for (auto i = river.begin(); i != river.end(); ++i) {
-		auto ends = edgeMap.vertex(i->first);
-		num += ends.second - ends.first;
-	}*/
-	return mesh;
+	std::unordered_map<int, int> vertexMap;
+	vertexMap.reserve(num * 3);
+	out.triangles.reserve(num * 3);
+	std::unordered_set<int> added;
+	added.reserve(num);
+	out.vertices.reserve(num + 2);
+	for (auto i = river.vertices.rbegin(); i != river.vertices.rend(); ++i) {
+		float z = i->surface;
+		auto ends = triangleMap.vertex(i->index);
+		while (ends.first != ends.second) {
+			int triOff = *ends.first++;
+			if (added.find(triOff) == added.end()) {
+				added.insert(triOff);
+				for (int i = 0; i != 3; ++i) {
+					int vert = mesh.triangles[triOff + i];
+					auto j = vertexMap.find(vert);
+					if (j == vertexMap.end()) {
+						int val = out.vertices.size();
+						out.triangles.push_back(val);
+						vertexMap.emplace(vert, val);
+						Vector3 v3 = mesh.vertices[vert];
+						v3.z = z;
+						out.vertices.push_back(v3);
+					}
+					else {
+						out.triangles.push_back(j->second);
+					}
+				}
+			}
+		}
+	}
+	out.calculateNormals();
+	return out;
 }

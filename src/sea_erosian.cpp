@@ -81,6 +81,25 @@ namespace {
 			return -1;
 		}
 
+		int findSeaJoin(int last, int offset, int next) {
+			auto ledges = mep->vertex(last);
+			auto oedges = mep->vertex(offset);
+			auto nedges = mep->vertex(next);
+			while (ledges.first != ledges.second) {
+				for (auto i = oedges.first; i != oedges.second; ++i) {
+					if (*ledges.first == *i) {
+						for (auto j = nedges.first; j != nedges.second; ++j) {
+							if (*j == *i && mesh->vertices[*j].z < 0.0f) {
+								return *j;
+							}
+						}
+					}
+				}
+				++ledges.first;
+			}
+			return -1;
+		}
+
 		int getSeaRatio(int last, int offset, int next) {
 			auto edges = mep->vertex(offset);
 			int sea = 0;
@@ -130,9 +149,23 @@ namespace {
 			});
 		}
 
+		void followCoastWithSeaJoins(int offset, std::vector<std::pair<int, int>> &out) {
+			followCoast(offset, out, [this](int last, int current, int next) {
+				return findSeaJoin(last, current, next);
+			});
+		}
+
 		void followCoastWithSeaCount(int offset, std::vector<std::pair<int, int>> &out) {
 			followCoast(offset, out, [this](int last, int current, int next) {
 				return getSeaRatio(last, current, next);
+			});
+		}
+		
+		void followCoastAndSmooth(int offset, std::vector<std::pair<int, int>> &out, std::vector<Vector3> &smoothed) {
+			followCoast(offset, out, [this, &smoothed](int last, int current, int next) {
+				int ret = smoothed.size();
+				smoothed.push_back((mesh->vertices[last] + mesh->vertices[current] + mesh->vertices[next]) / 3.0f);
+				return ret;
 			});
 		}
 		
@@ -158,6 +191,26 @@ namespace {
 	/*bool isCliff(const Vector2 &a, const Vector2 &b, const Vector2 &c, const Vector2 &land) {
 
 	}*/
+
+
+	float smooth(const MeshEdgeMap &mep, Mesh &mesh, int offset) {
+		float total = mesh.vertices[offset].z;
+		int count = 1;
+		for (auto n = mep.vertex(offset); n.first != n.second; ++n.first, ++count) {
+			total += mesh.vertices[*n.first].z;
+		}
+		return total / static_cast<float>(count);
+	}
+
+	void raiseSeaNeighbours(const MeshEdgeMap &mep, Mesh &mesh, int offset) {
+		for (auto n = mep.vertex(offset); n.first != n.second; ++n.first) {
+			int offset = *n.first;
+			Vector3 &pos = mesh.vertices[offset];
+			if (pos.z < 0.0f) {
+				pos.z = 0.0f;
+			}
+		}
+	}
 }
 
 void motu::mapCoastlines(const MeshEdgeMap &mep, const Mesh &mesh, Coastlines &coastlines) {
@@ -206,7 +259,7 @@ void motu::improveCliffs(const MeshEdgeMap &mep, Mesh &mesh) {
 			if (j.second != -1) {
 				Vector3 shift = mesh.vertices[j.first] - mesh.vertices[j.second];
 				shift.z = 0.0f;
-				shift *= 0.75;
+				shift *= 0.95;
 				mesh.vertices[j.second] += shift;
 				mesh.vertices[j.first].z = 0.0f;
 			}
@@ -233,6 +286,58 @@ void motu::applySeaErosian(const MeshEdgeMap &mep, Mesh &mesh, float strength) {
 					continue;
 				}
 				mesh.vertices[j.first].z = std::max(-FLT_EPSILON, z - static_cast<float>(j.second) * strength / z);
+			}
+		}
+	}
+}
+
+void motu::eatCoastlines(const MeshEdgeMap &mep, Mesh &mesh) {
+	Coastlines coastlines;
+	CoastMapper coastMapper(mep, mesh);
+	coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &section) {
+		coastMapper.followCoastWithSeaJoins(offset, section);
+	});
+	for (auto i = coastlines.begin(); i != coastlines.end(); ++i) {
+		for (auto j = (*i)->begin(); j != (*i)->end(); ++j) {
+			if (j->second != -1) {
+				mesh.vertices[j->first].z = mesh.vertices[j->second].z;
+			}
+		}
+	}
+}
+
+void motu::smoothCoastlines(const MeshEdgeMap &mep, Mesh &mesh) {
+	CoastMapper coastMapper(mep, mesh);
+	Coastlines coastlines;
+	std::vector<Vector3> smooth;
+	coastMapper.findCoasts(coastlines, [&coastMapper, &smooth](int offset, std::vector<std::pair<int, int>> &out) {
+		coastMapper.followCoastAndSmooth(offset, out, smooth);
+	});
+	for (const auto &i : coastlines) {
+		for (const auto &j : *i) {
+			mesh.vertices[j.first] = smooth[j.second];
+		}
+	}
+}
+
+void motu::formBeaches(const MeshEdgeMap &mep, Mesh &mesh) {
+	Coastlines coastlines;
+	CoastMapper coastMapper(mep, mesh);
+	coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &section) {
+		coastMapper.followCoastWithSeaCount(offset, section);
+	});
+	for (const auto &i : coastlines) {
+		for (const auto &j : *i) {
+			if (j.second < 0) {
+				float z = smooth(mep, mesh, j.first);
+				mesh.vertices[j.first].z = z;
+				for (auto v = mep.vertex(j.first); v.first != v.second; ++v.first) {
+					int offset = *v.first;
+					if (!coastMapper.onCoast(offset)) {
+						mesh.vertices[offset].z = z;
+					}
+				}
+				mesh.vertices[j.first].z = smooth(mep, mesh, j.first);
 			}
 		}
 	}

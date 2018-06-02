@@ -9,7 +9,7 @@
 namespace motu {
 	struct Mesh;
 	class MeshEdgeMap;
-	struct MeshTriangleMap;
+	class MeshTriangleMap;
 
 	struct Lake {
 		typedef std::shared_ptr<Lake> Ptr;

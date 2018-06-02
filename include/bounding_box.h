@@ -7,6 +7,7 @@
 
 namespace motu {
 	struct BoundingBox {
+
 		typedef Vector3 VectorType;
 
 		Vector3 upper, lower;

@@ -17,6 +17,71 @@ namespace motu {
 		}
 		return static_cast<IntType>(out);
 	}
+
+	struct Colour {
+		float channels[4];
+
+		Colour() {}
+
+		Colour(float red, float green, float blue, float alpha) {
+			channels[0] = red;
+			channels[1] = green;
+			channels[2] = blue;
+			channels[3] = alpha;
+		}
+
+		Colour operator + (const Colour &other) const{
+			Colour out(0.0f, 0.0f, 0.0f, 0.0f);
+			for (int i = 0; i != 4; ++i) {
+				out.channels[i] = channels[i] + other.channels[i];
+			}
+			return out;
+		}
+
+		Colour operator * (float f) const{
+			Colour out(0.0f, 0.0f, 0.0f, 0.0f);
+			for (int i = 0; i != 4; ++i) {
+				out.channels[i] = channels[i] * f;
+			}
+			return out;
+		}
+
+		float &red() {
+			return channels[0];
+		}
+
+		float &green() {
+			return channels[1];
+		}
+
+		float &blue() {
+			return channels[2];
+		}
+
+		float &alpha() {
+			return channels[3];
+		}
+
+		float red() const{
+			return channels[0];
+		}
+
+		float green() const{
+			return channels[1];
+		}
+
+		float blue() const{
+			return channels[2];
+		}
+
+		float alpha() const{
+			return channels[3];
+		}
+
+		operator uint32_t() const {
+			return (gunToUint<uint32_t>(red(), 255.0f) << 24) | (gunToUint<uint32_t>(green(), 255.0f) << 16) | (gunToUint<uint32_t>(blue(), 255.0f) << 8) | gunToUint<uint32_t>(alpha(), 255.0f);
+		}
+	};
 	
 	inline uint32_t toColour32(const Vector3 &vec) {
 		return (gunToUint<uint32_t>(vec.x, 255.0f) << 16) | (gunToUint<uint32_t>(vec.y, 255.0f) << 8) | gunToUint<uint32_t>(vec.z, 255.0f);

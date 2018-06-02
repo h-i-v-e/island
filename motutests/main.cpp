@@ -26,6 +26,9 @@
 #include "colour.h"
 #include "sea_erosian.h"
 #include "mesh_triangle_map.h"
+#include "height_map.h"
+#include "matrix4.h"
+#include "unity.h"
 
 using namespace motu;
 using namespace std;
@@ -110,96 +113,58 @@ inline float byteToFloat(uint32_t val, uint32_t shift) {
 }
 
 TEST_CASE("Continent", "Continent"){
+	return;
     random_device rd;
     default_random_engine rand(rd());
 	Island::Options options;
-	options.pallete.cliff = Vector3(0.9f, 0.9f, 0.9f);
-	options.pallete.sand = Vector3(1.0f, 0.95f, 0.9f);
-	options.pallete.grass = Vector3(0.5f, 1.0f, 0.35f);
-	options.pallete.mountain = Vector3(1.0f, 0.9f, 0.25f);
 	Island island(rand, options);
-	/*Grid<float> heightMap(2048, 2048);
-	island.lod(2).rasterize(heightMap);*/
 	Raster raster(2048, 2048);
 	raster.fill(0xffffff);
 	Vector3 sun(0.0f, 0.5f, 1.0f);
 	sun.normalize();
-	/*float mul = 1.0f / 255.0f, muln = 1.0f / 127.5f, seaMul = 1.0f / 0.002f;
-	for (size_t y = 0; y != raster.height(); ++y) {
-		for (size_t x = 0; x != raster.width(); ++x) {
-			Vector3 normal = island.normalMap()(x, y);
-			float f = island.occlusianMap()(x, y) * mul;
-			f *= sun.dot(normal);
-			f *= 255.0f;
-			if (f < 0.0f) {
-				f = 0.0f;
-			}
-			else if (f > 255.0f) {
-				f = 255.0f;
-			}
-			float height = heightMap(x, y);
-			if (height < 0.0f) {
-				height = (0.002f + height) * seaMul;
-				if (height < 0.0f) {
-					height = 0.0f;
-				}
-				f *= height * 0.5f;
-			}
-			uint32_t val = static_cast<uint32_t>(f);
-			raster(x, y) = val | (val << 8) | (val << 16);
-		}
-	}*/
-	/*Island::NormalAndOcclusianMap nom(2048, 2048);
-	island.normalAndOcclusianMap(2, nom);*/
 	Grid<Vector3> normals(2048, 2048);
-	Mesh sliced;
-	island.lod(2).slice(BoundingBox(Vector3(0.0f, 0.0f, -1.0f), Vector3(1.0f, 1.0f, 1.0f)), sliced);
-	//island.lod(2).rasterizeNormalsOnly(normals);
-	sliced.rasterizeNormalsOnly(normals);
+	island.lod(2).rasterizeNormalsOnly(normals);
+	Island::NormalAndOcclusianMap nam(2048, 2048);
+	island.generateNormalAndOcclusianMap(nam);
+	std::cout << island.riverMeshes().size() << std::endl;
+	HeightMap hm(2048, 2048);
+	hm.load(island.lod(0));
 	static float occlusianMul = 1.0f / 255.0f;
 	for (int i = 0, j = 2048 * 2048; i != j;  ++i) {
 		//raster.data()[i] = nom.data()[i];
-		uint32_t nac = island.normalAndOcclusianMap().data()[i];
+		if (hm.data()[i] < hm.seaLevel()) {
+			raster.data()[i] = 0;
+			continue;
+		}
+		uint32_t nac = nam.data()[i];
 		Vector3 normal(byteToFloat(nac, 16), byteToFloat(nac, 8), byteToFloat(nac, 0));
 		normal = (normal + normals.data()[i]) * 0.5f;
 		//const Vector3 &normal = normals.data()[i];
 		float occlusian = (nac >> 24) * occlusianMul;
-		Vector3 colour = toColourV3(island.albedoMap().data()[i]) * sun.dot(normal) * occlusian;
+		Vector3 colour = Vector3(1.0f, 1.0f, 1.0f) * sun.dot(normal) * occlusian;
 		raster.data()[i] = toColour32(colour);
 	}
-	/*Mesh lakeMesh;
-	for (const Lake::Ptr &lake : island.lakes()) {
-		lake->createMesh(island.lod(1), MeshTriangleMap(island.lod(1)), lakeMesh);
-		raster.draw(lakeMesh, 0x0000ff);*/
-		/*for (const std::shared_ptr<Rivers::River> &river : island.rivers().riverList()) {
-			if (river->front().first == lake->outflow) {
-				for (int i = 1; i < river->size(); ++i) {
-					raster.draw(Edge(island.lod(1).vertices[(*river)[i - 1].first].asVector2(), island.lod(1).vertices[(*river)[i].first].asVector2()), 0xff0000);
-				}
-			}
-		}*/
-	//}
-	
-	/*Coastlines coastlines;
-	mapCoastlines(island.lod(2), coastlines);
-	for (const auto &i : coastlines) {
-		for (int j = 1; j < i->size(); ++j) {
-			/*int triangle = (*i)[j].second;
-			Triangle tri(
-				island.lod(2).vertices[island.lod(2).triangles[triangle]].asVector2(),
-				island.lod(2).vertices[island.lod(2).triangles[triangle + 1]].asVector2(),
-				island.lod(2).vertices[island.lod(2).triangles[triangle + 2]].asVector2()
-			);*/
-			/*Edge edges[3];
-			tri.getEdges(edges);
-			for (int i = 0; i != 3; ++i) {
-				raster.draw(edges[i], 0x0000ff);
-			}*/
-			//raster.draw(Edge(island.lod(2).vertices[(*i)[j - 1].first].asVector2(), tri.findCentroid()), 0x0000ff);
-			/*if ((*i)[j].second != -1) {
-				raster.draw(Edge(island.lod(2).vertices[(*i)[j].first].asVector2(), island.lod(2).vertices[(*i)[j].second].asVector2()), 0xff0000);
-			}
-			raster.draw(Edge(island.lod(2).vertices[(*i)[j - 1].first].asVector2(), island.lod(2).vertices[(*i)[j].first].asVector2()), 0xff0000);
+
+
+
+	//Mesh mesh;
+	//island.lod(2).slice(BoundingBox(Vector3(0.0f, 0.0f, -0.02f), Vector3(1.0f, 1.0f, 1.0f)), mesh);
+	//mesh.transform(Matrix4::scale(4.0f) * Matrix4::translate(Vector3(-0.25f, -0.25f, 0.0f)));
+
+	/*HeightMap hm(512, 512);
+	hm.load(mesh);
+	for (int y = 0; y != 512; ++y) {
+		for (int x = 0; x != 512; ++x) {
+			uint32_t gun = static_cast<uint32_t>(255.0f * hm(x, y));
+			raster(x, y) = gun | (gun << 8) | (gun << 16) | 0xff000000;
+		}
+	}*/
+	/*MeshEdgeMap mep(mesh);
+	for (int i = 0; i != mesh.vertices.size(); ++i) {
+		auto j = mep.vertex(i);
+		const Vector2 &a = mesh.vertices[i].asVector2();
+		while (j.first != j.second) {
+			raster.draw(Edge(a, mesh.vertices[*j.first++].asVector2()), 0xffffffff);
 		}
 	}*/
 
@@ -214,6 +179,27 @@ TEST_CASE("Continent", "Continent"){
     }
     //std::copy(raw, raw + rasterLength, std::back_inserter(buffer));
     writePNG("/Users/jerome/test.png", buffer, 2048, 2048);
+}
+
+TEST_CASE("unity", "unity") {
+	MotuOptions options;
+	options.coastalSlopeMultiplier = 1.0f;
+	options.erosianPasses = 16;
+	options.maxRiverGradient = 0.001f;
+	options.maxZ = 0.1f;
+	options.noiseMultiplier = 0.0005f;
+	options.riverDepth = 0.002f;
+	options.riverSourceSDThreshold = 1.0f;
+	options.slopeMultiplier = 1.1f;
+	options.waterRatio = 0.4f;
+	void *handle = CreateMotu(666, &options);
+	ExportHeightMap *ehm = CreateHeightMap(handle, 1024);
+	ExportQuantisedRiverArray uvs;
+	CreateQuantisedRiverMeshes(handle, ehm, &uvs);
+	std::cout << uvs.length << std::endl;
+	ReleaseQuantisedRiverMeshes(&uvs);
+	ReleaseHeightMap(ehm);
+	ReleaseMotu(handle);
 }
 
 /*template<class Vertex>

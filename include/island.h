@@ -16,23 +16,22 @@ namespace motu {
 
 	class Island {
 	public:
+		struct RiverVertex {
+			Vector3 vertex;
+			int flow;
+
+			RiverVertex(const Vector3 &vertex, int flow) : vertex(vertex), flow(flow) {}
+		};
+
 		typedef Grid<uint32_t> NormalAndOcclusianMap;
 		typedef Grid<Vector3> NormalMap;
 		typedef Grid<uint8_t> OcclusianMap;
-		typedef Grid<uint32_t> AlbedoMap;
-
-		struct Pallete {
-			Vector3 sand, cliff, grass, mountain;
-
-			static Vector3 white() {
-				return Vector3(1.0f, 1.0f, 1.0f);
-			}
-
-			Pallete() : sand(white()), cliff(white()), grass(white()), mountain(white()) {}
-		};
+		typedef Grid<uint32_t> VegetationMap;
+		typedef std::vector<std::shared_ptr<Mesh>> RiverMeshes;
+		typedef std::vector<RiverVertex> VertexList;
+		typedef std::vector<std::shared_ptr<VertexList>> RiverVertexLists;
 
 		struct Options {
-			Pallete pallete;
 			float maxRiverGradient;
 			float riverDepth;
 			float riverSourceSDThreshold;
@@ -43,12 +42,10 @@ namespace motu {
 			float noiseMultiplier;
 			int erosianPasses;
 
-			Options() : maxRiverGradient(0.01f), riverDepth(0.0025f), riverSourceSDThreshold(2.0f), maxZ(0.05f), waterRatio(0.5f), slopeMultiplier(1.1f), coastalSlopeMultiplier(1.0f), noiseMultiplier(0.0005), erosianPasses(16) {}
+			Options() : maxRiverGradient(0.05f), riverDepth(0.005f), riverSourceSDThreshold(3.0f), maxZ(0.2f), waterRatio(0.5f), slopeMultiplier(1.3f), coastalSlopeMultiplier(1.0f), noiseMultiplier(0.0005f), erosianPasses(16) {}
 		};
 
-		Island(std::default_random_engine &rnd, const Options &options) : maxZ(options.maxZ),
-			mNormalAndOcclusianMap(MOTU_TEXTURE_MAP_SIZE, MOTU_TEXTURE_MAP_SIZE),
-			albedo(MOTU_TEXTURE_MAP_SIZE, MOTU_TEXTURE_MAP_SIZE){
+		Island(std::default_random_engine &rnd, const Options &options) : maxZ(options.maxZ){
 			generateTopology(rnd, options);
 		}
 
@@ -56,29 +53,33 @@ namespace motu {
 			return lods[offset];
 		}
 
-		const Rivers &rivers() const {
+		/*const Rivers &rivers() const {
 			return *mRivers;
+		}*/
+
+		const RiverMeshes &riverMeshes() const {
+			return mRiverMeshes;
 		}
 
-		const AlbedoMap &albedoMap() const {
-			return albedo;
-		}
+		void generateVegetationMap(VegetationMap &) const;
 
-		const NormalAndOcclusianMap &normalAndOcclusianMap() const {
-			return mNormalAndOcclusianMap;
-		}
+		void generateNormalAndOcclusianMap(NormalAndOcclusianMap &) const;
 
 		const Lake::Lakes lakes() const {
 			return mLakes;
 		}
 
+		const RiverVertexLists &riverVertexLists() const{
+			return mRiverVertexLists;
+		}
+
 	private:
 		float maxZ, maxHeight;
 		Mesh lods[3];
-		NormalAndOcclusianMap mNormalAndOcclusianMap;
-		AlbedoMap albedo;
 		Lake::Lakes mLakes;
-		std::unique_ptr<Rivers> mRivers;
+		//std::unique_ptr<Rivers> mRivers;
+		RiverMeshes mRiverMeshes;
+		RiverVertexLists mRiverVertexLists;
 
 		void generateTopology(std::default_random_engine &, const Options &);
 	};

@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <queue>
 #include <algorithm>
+#include <stack>
 
 using namespace motu;
 
@@ -31,6 +32,7 @@ namespace {
 				++neighbours.first;
 			}
 			if (lowest < 0.0f) {
+				//next->z += carrying;
 				return;
 			}
 			if (down == -1) {
@@ -39,7 +41,8 @@ namespace {
 			}
 			speed += next->z - lowest;
 			speed *= 0.5f;
-			float capacity = speed * carryCapacity;
+			//speed = next->z - lowest;
+			float capacity = (speed * speed * speed) * carryCapacity;
 			next = &mesh.vertices[down];
 			next->z += (capacity - carrying);
 			carrying = capacity;
@@ -83,26 +86,28 @@ namespace {
 		trackErosian(mesh, edgeMap, in, carrying, carryCapacity, ReallyEmptyOutflow());
 	}*/
 
-	Mesh &erode(Mesh &mesh, const MeshEdgeMap &edges, int drops) {
-		float carryCapacity = 10.0f / mesh.vertices.size();
+	Mesh &erode(std::default_random_engine &rnd, Mesh &mesh, const MeshEdgeMap &edges, int drops) {
+		std::uniform_int_distribution<int> dist(0, (mesh.triangles.size() / 3) - 1);
+		float carryCapacity = 50.0f / mesh.vertices.size();
 		while (drops--) {
-			for (int i = 0; i < mesh.triangles.size();) {
-				int lowest = i;
-				float z = mesh.vertices[mesh.triangles[i++]].z;
-				for (int j = i + 2; i != j; ++i) {
-					if (mesh.vertices[mesh.triangles[i]].z < z) {
-						lowest = i;
-						z = mesh.vertices[mesh.triangles[i]].z;
+			for (int i = 0; i != mesh.triangles.size(); ++i) {
+				int offset = dist(rnd) * 3;
+				int lowest = offset;
+				float z = mesh.vertices[mesh.triangles[offset++]].z;
+				for (int j = offset + 2; offset != j; ++offset) {
+					if (mesh.vertices[mesh.triangles[offset]].z < z) {
+						lowest = offset;
+						z = mesh.vertices[mesh.triangles[offset]].z;
 					}
 				}
 				trackErosian(mesh, edges, mesh.triangles[lowest], 0.0f, carryCapacity);
 			}
-			applySeaErosian(edges, mesh, 0.00000002f);
 		}
+		//applySeaErosian(edges, mesh, carryCapacity);
 		return mesh;
 	}
 }
 
-Mesh &motu::applyHydrolicErosian(Mesh &mesh, const MeshEdgeMap &edges, int drops) {
-	return erode(mesh, edges, drops);
+Mesh &motu::applyHydrolicErosian(std::default_random_engine &rnd, Mesh &mesh, const MeshEdgeMap &edges, int drops) {
+	return erode(rnd, mesh, edges, drops);
 }

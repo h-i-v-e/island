@@ -12,10 +12,19 @@
 namespace motu {
 	struct Mesh;
 	class MeshEdgeMap;
-	struct MeshTriangleMap;
+	class MeshTriangleMap;
 
 	struct River {
-		typedef std::vector<std::pair<int, int>> Vertices;
+		struct Vertex {
+			int index, flow;
+			float surface;
+
+			Vertex() {}
+
+			Vertex(int index, int flow) : index(index), flow(flow), surface(0.0f) {}
+		};
+
+		typedef std::vector<Vertex> Vertices;
 		typedef std::shared_ptr<River> Ptr;
 
 		Vertices vertices;
@@ -26,7 +35,7 @@ namespace motu {
 	public:
 		typedef std::vector<River::Ptr> RiverList;
 
-		Rivers(Mesh &mesh, const MeshEdgeMap &, Lake::Lakes &lakes, float flowSDthreshold = 3.0f);
+		Rivers(Mesh &mesh, const MeshEdgeMap &, Lake::Lakes &lakes, float depthMultiplier, float flowSDthreshold = 3.0f);
 
 		const RiverList &riverList() const{
 			return mRivers;
@@ -34,11 +43,12 @@ namespace motu {
 
 		void smooth(Mesh &mesh, const MeshEdgeMap &) const;
 
-		void carveInto(Mesh &mesh, const MeshEdgeMap &, float depthMultiplier, float maxGradient) const;
+		void carveInto(Mesh &mesh, const MeshEdgeMap &, float maxGradient) const;
 
-		Mesh &getMesh(const River &, Mesh &, const MeshTriangleMap &);
+		Mesh &getMesh(const River &, const Mesh &, const MeshTriangleMap &, Mesh &) const;
 	private:
 		RiverList mRivers;
+		float depthMultiplier;
 	};
 }
 

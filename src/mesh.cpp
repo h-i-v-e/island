@@ -193,7 +193,7 @@ namespace{
 		};
 	};
 
-	struct Hieght : public Triangle3{ 
+	struct Height : public Triangle3{ 
 		struct InOut {
 			Vector3 vertex;
 
@@ -219,7 +219,7 @@ namespace{
 	};
 
 	void splitTriangles(const Plane &divider, std::vector<Triangle3WithNormals> &in, std::vector<Triangle3WithNormals> &out) {
-		size_t i = out.size();
+		//size_t i = out.size();
 		for (const Triangle3WithNormals &tri : in) {
 			tri.slice(divider, out);
 		}
@@ -331,6 +331,143 @@ namespace{
 			fillTriangle(raster, tri);
 		}
 	}
+	//right, bottom, skip, left, top, skip
+	template<class TriangleSplitter>
+	Mesh &performSlice(const Mesh src, const BoundingBox &bounds, Mesh &out, TriangleSplitter splitter) {
+		std::vector<Triangle3WithNormals> inside, selection, split;
+		inside.reserve(src.triangles.size() / 3);
+		for (int i = 2; i < src.triangles.size(); i += 3) {
+			Triangle3WithNormals tri(getTriangleWithNormals(src, i - 2));
+			if (bounds.intersects(tri)) {
+				if (bounds.contains(tri)) {
+					inside.push_back(tri);
+				}
+				else {
+					split.push_back(tri);
+				}
+			}
+		}
+		Plane planes[6];
+		bounds.getPlanes(planes);
+		for (int i = 0; i != 6; ++i) {
+			selection.clear();
+			for (const Triangle3WithNormals &tri : split) {
+				if (tri.intersects(planes[i])) {
+					selection.push_back(tri);
+				}
+			}
+			uint8_t side;
+			switch (i) {
+			case 0:
+				side = Mesh::RIGHT;
+				break;
+			case 1:
+				side = Mesh::BOTTOM;
+				break;
+			case 3:
+				side = Mesh::LEFT;
+				break;
+			case 4:
+				side = Mesh::TOP;
+				break;
+			default:
+				side = 0;
+			}
+			splitter(side, planes[i], selection, split);
+		}
+		for (const Triangle3WithNormals &tri : split) {
+			if (bounds.contains(tri)) {
+				inside.push_back(tri);
+			}
+		}
+		out.load(inside);
+		return out;
+	}
+
+	struct MeshClamper {
+		Mesh clamp;
+		std::vector<Triangle3WithNormals> buffer;
+		std::vector<int> clampLine;
+		std::vector<std::pair<int, int>> onLine;
+		uint8_t sides;
+
+		template <class GetDim>
+		void performClamp(GetDim getDim) {
+			if (clampLine.size() < 2) {
+				return;
+			}
+			const Vector3 *lastVert = clamp.vertices.data() + clampLine.back(), *lastNormal = clamp.normals.data() + clampLine.back();
+			clampLine.pop_back();
+			const Vector3 *nextVert = clamp.vertices.data() + clampLine.back(), *nextNormal = clamp.normals.data() + clampLine.back();
+			clampLine.pop_back();
+			float invDist = 1.0f / (getDim(*nextVert) - getDim(*lastVert));
+			int i = 0;
+			while (i != onLine.size()) {
+				const std::pair<int, int> &vn = onLine[i];
+				Vector3 &vert = buffer[vn.first].vertices[vn.second];
+				if (getDim(*nextVert) < getDim(vert)) {
+					if (clampLine.empty()) {
+						break;
+					}
+					lastVert = nextVert;
+					lastNormal = nextNormal;
+					nextVert = clamp.vertices.data() + clampLine.back();
+					nextNormal = clamp.normals.data() + clampLine.back();
+					invDist = 1.0f / (getDim(*nextVert) - getDim(*lastVert));
+					clampLine.pop_back();
+				}
+				float hit = (getDim(vert) - getDim(*lastVert)) * invDist;
+				if (hit >= 0.0f && hit <= 1.0f) {
+					vert.z = ((1.0f - hit) * lastVert->z) + (hit * nextVert->z);
+					buffer[vn.first].normals[vn.second] = (*lastNormal * (1.0f - hit)) + (*nextNormal * hit);
+					buffer[vn.first].normals[vn.second].normalize();
+				}
+				++i;
+			}
+			while (i != onLine.size()) {
+				const std::pair<int, int> &vn = onLine[i++];
+				buffer[vn.first].vertices[vn.second].z = lastVert->z;
+				buffer[vn.first].normals[vn.second] = *lastNormal;
+			}
+		}
+
+		template<class GetDimension, class GetPerp>
+		void createZLookup(float planeDim, GetDimension getDim, GetPerp getPerp) {
+			for (int i = 0; i != clamp.vertices.size(); ++i) {
+				if (motu::almostEqual(planeDim, getDim(clamp.vertices[i]))) {
+					clampLine.push_back(i);
+				}
+			}
+			std::sort(clampLine.begin(), clampLine.end(), [this, getPerp](int a, int b) {
+				return getPerp(clamp.vertices[a]) > getPerp(clamp.vertices[b]);
+			});
+		}
+
+		template<class GetDimension, class GetPerp>
+		void glue(const Plane &divider, std::vector<Triangle3WithNormals> &in, std::vector<Triangle3WithNormals> &out, GetDimension getDim, GetPerp getPerp) {
+			buffer.clear();
+			splitTriangles(divider, in, buffer);
+			if (buffer.empty()) {
+				return;
+			}
+			clampLine.clear();
+			onLine.clear();
+			float planeDim = getDim(divider.point);
+			for (int i = 0; i != buffer.size(); ++i) {
+				for (int j = 0; j != 3; ++j) {
+					if (almostEqual(planeDim, getDim(buffer[i].vertices[j]))) {
+						onLine.emplace_back(i, j);
+					}
+				}
+			}
+			std::sort(onLine.begin(), onLine.end(), [this, getPerp](const std::pair<int, int> &a, const std::pair<int, int> &b) {
+				return getPerp(buffer[a.first].vertices[a.second]) < getPerp(buffer[b.first].vertices[b.second]);
+			});
+			createZLookup(planeDim, getDim, getPerp);
+			performClamp(getPerp);
+			std::copy(buffer.begin(), buffer.end(), std::back_inserter(out));
+		}
+	};
 }
 
 BoundingBox &Mesh::getMaxSquare(BoundingBox &out) const{
@@ -504,7 +641,7 @@ void Mesh::rasterize(Grid<Vector3> &raster) const {
 }
 
 void Mesh::rasterize(Grid<float> &raster) const {
-	::rasterize(*this, Hieght(), raster);
+	::rasterize(*this, Height(), raster);
 }
 
 Mesh::Edges &Mesh::edges(Edges &edges) const {
@@ -517,42 +654,41 @@ Mesh::Edges &Mesh::edges(Edges &edges) const {
 }
 
 Mesh &Mesh::slice(const BoundingBox &bounds, Mesh &out) const {
-	std::vector<Triangle3WithNormals> inside, selection, split;
-	inside.reserve(triangles.size() / 3);
-	for (int i = 2; i < triangles.size(); i += 3) {
-		Triangle3WithNormals tri(getTriangleWithNormals(*this, i - 2));
-		if (bounds.intersects(tri)) {
-			if (bounds.contains(tri)) {
-				inside.push_back(tri);
-			}
-			else {
-				split.push_back(tri);
-			}
+	performSlice(*this, bounds, out, [](uint8_t side, const Plane &divider, std::vector<Triangle3WithNormals> &in, std::vector<Triangle3WithNormals> &out) {
+		splitTriangles(divider, in, out);
+	});
+	return out;
+}
+
+Mesh &Mesh::slice(const BoundingBox &bounds, uint8_t clampDown, const Mesh &clampMesh, Mesh &out) const{
+	MeshClamper clamper;
+	clamper.sides = clampDown;
+	clampMesh.slice(bounds, clamper.clamp);
+	performSlice(*this, bounds, out, [&clamper](uint8_t side,  Plane &divider, std::vector<Triangle3WithNormals> &in, std::vector<Triangle3WithNormals> &out) {
+		if (!(clamper.sides & side)) {
+			splitTriangles(divider, in, out);
 		}
-	}
-	Plane planes[6];
-	bounds.getPlanes(planes);
-	for (int i = 0; i != 6; ++i) {
-		selection.clear();
-		for (const Triangle3WithNormals &tri : split) {
-			if (tri.intersects(planes[i])) {
-				selection.push_back(tri);
-			}
+		else if (divider.normal.x != 0.0f) {
+			clamper.glue(divider, in, out, [](const Vector3 &vec) {
+				return vec.x;
+			}, [](const Vector3 &vec) {
+				return vec.y;
+			});
 		}
-		splitTriangles(planes[i], selection, split);
-	}
-	for (const Triangle3WithNormals &tri : split) {
-		if (bounds.contains(tri)) {
-			inside.push_back(tri);
+		else {
+			clamper.glue(divider, in, out, [](const Vector3 &vec) {
+				return vec.y;
+			}, [](const Vector3 &vec) {
+				return vec.x;
+			});
 		}
-	}
-	out.load(inside);
+	});
 	return out;
 }
 
 Mesh &Mesh::transform(const Matrix4 &m4) {
 	for (Vector3 &v3 : vertices) {
-		v3 = *reinterpret_cast<Vector3*>(&(m4 * Matrix4::asPoint(v3)));
+		v3 = (m4 * Matrix4::asPoint(v3)).asVector3();
 	}
 	return *this;
 }
