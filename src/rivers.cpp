@@ -418,7 +418,7 @@ void Rivers::carveInto(Mesh &mesh, const MeshEdgeMap &em, float maxGradient) con
 		return mesh.vertices[a->vertices.back().index].z < mesh.vertices[b->vertices.back().index].z;
 	});
 	std::vector<float> surfaces(mesh.vertices.size(), -1.0f);
-	for (const auto &river : copy) {
+	/*for (const auto &river : copy) {
 		int i = river->vertices.size() - 1;
 		Vector3 *last = &mesh.vertices[i];
 		for (--i; i >= 0; --i) {
@@ -435,7 +435,7 @@ void Rivers::carveInto(Mesh &mesh, const MeshEdgeMap &em, float maxGradient) con
 			}
 			last = current;
 		}
-	}
+	}*/
 	for (const auto &river : copy) {
 		float surface = -1.0f;
 		for (auto i = river->vertices.rbegin(); i != river->vertices.rend(); ++i) {

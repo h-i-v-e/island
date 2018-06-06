@@ -33,6 +33,51 @@
 using namespace motu;
 using namespace std;
 
+void sortPerimeter(std::vector<Vector2> &in) {
+	Vector2 centre = Vector2::zero();
+	for (size_t i = 0; i < in.size(); ++i) {
+		centre += in[i];
+	}
+	centre /= in.size();
+	std::sort(in.begin(), in.end(), [&centre](const Vector2 &a, const Vector2 &b) {
+		return Triangle(centre, a, b).isClockwise();
+
+
+		/*if (axlen >= 0.0f && bxlen < 0.0f) {
+			assert(ca.dot(cb) < 0.0f);
+			return false;
+		}
+		if (axlen < 0.0f && bxlen >= 0.0f) {
+			assert(ca.dot(cb) > 0.0f);
+			return true;
+		}*/
+		/*if (axlen == 0.0f && bxlen == 0.0f) {
+		if (a.y - centre.y >= 0.0f || b.y - centre.y >= 0.0f)
+		return a.y > b.y;
+		return b.y > a.y;
+		}*/
+
+
+		// compute the cross product of vectors (center -> a) x (center -> b)
+		/*float dot = ca.dot(cb);
+		if (dot < 0.0f) {
+			//a is to the right of b
+			return true;
+		}
+		if (dot > 0.0f) {
+			//b is to the right of a
+			return false;
+		}*/
+		//return dot < 0.0f;
+		// points a and b are on the same line from the center
+		// check which point is closer to the center
+		/*int d1 = (a.x - centre.x) * (a.x - centre.x) + (a.y - centre.y) * (a.y - centre.y);
+		int d2 = (b.x - centre.x) * (b.x - centre.x) + (b.y - centre.y) * (b.y - centre.y);
+		return d1 > d2;*/
+		//return ca.sqrMagnitude() < cb.sqrMagnitude();
+	});
+}
+
 uint32_t clamp255(float f) {
 	if (f < -127.0f) {
 		f = -127.0f;
@@ -112,7 +157,7 @@ inline float byteToFloat(uint32_t val, uint32_t shift) {
 	return (static_cast<float>((val & mask) >> shift) - 127.5f) * mul;
 }
 
-TEST_CASE("Continent", "Continent"){
+/*TEST_CASE("Continent", "Continent"){
 	return;
     random_device rd;
     default_random_engine rand(rd());
@@ -145,29 +190,6 @@ TEST_CASE("Continent", "Continent"){
 		raster.data()[i] = toColour32(colour);
 	}
 
-
-
-	//Mesh mesh;
-	//island.lod(2).slice(BoundingBox(Vector3(0.0f, 0.0f, -0.02f), Vector3(1.0f, 1.0f, 1.0f)), mesh);
-	//mesh.transform(Matrix4::scale(4.0f) * Matrix4::translate(Vector3(-0.25f, -0.25f, 0.0f)));
-
-	/*HeightMap hm(512, 512);
-	hm.load(mesh);
-	for (int y = 0; y != 512; ++y) {
-		for (int x = 0; x != 512; ++x) {
-			uint32_t gun = static_cast<uint32_t>(255.0f * hm(x, y));
-			raster(x, y) = gun | (gun << 8) | (gun << 16) | 0xff000000;
-		}
-	}*/
-	/*MeshEdgeMap mep(mesh);
-	for (int i = 0; i != mesh.vertices.size(); ++i) {
-		auto j = mep.vertex(i);
-		const Vector2 &a = mesh.vertices[i].asVector2();
-		while (j.first != j.second) {
-			raster.draw(Edge(a, mesh.vertices[*j.first++].asVector2()), 0xffffffff);
-		}
-	}*/
-
     int rasterLength = raster.length() * 3;
     std::vector<unsigned char> buffer;
     buffer.reserve(rasterLength);
@@ -179,7 +201,7 @@ TEST_CASE("Continent", "Continent"){
     }
     //std::copy(raw, raw + rasterLength, std::back_inserter(buffer));
     writePNG("/Users/jerome/test.png", buffer, 2048, 2048);
-}
+}*/
 
 TEST_CASE("unity", "unity") {
 	MotuOptions options;
@@ -202,6 +224,32 @@ TEST_CASE("unity", "unity") {
 	ReleaseMotu(handle);
 }
 
+
+/*TEST_CASE("makepolygon", "makepolygon") {
+	std::vector<Vector2> points;
+	RandomVector2 rand;
+	for (size_t i = 0; i != 10; ++i) {
+		points.push_back(rand());
+	}
+	sortPerimeter(points);
+	Raster raster(1024, 1024);
+	raster.fill(0xffffffff);
+	for (size_t i = 1; i != 10; ++i) {
+		raster.draw(Edge(points[i - 1], points[i]), 0);
+
+	}
+	int rasterLength = raster.length() * 3;
+	std::vector<unsigned char> buffer;
+	buffer.reserve(rasterLength);
+	const unsigned char *raw = reinterpret_cast<const unsigned char*>(raster.data());
+	for (int i = 0, j = raster.length() << 2; i != j; i += 4) {
+		buffer.push_back(raw[i + 2]);
+		buffer.push_back(raw[i + 1]);
+		buffer.push_back(raw[i]);
+	}
+	//std::copy(raw, raw + rasterLength, std::back_inserter(buffer));
+	writePNG("/Users/jerome/test.png", buffer, 1024, 1024);
+}*/
 /*template<class Vertex>
 Vector3 fromVertex(const Vertex &vertex) {
 	return Vector3(vertex.position().x, vertex.position().y, vertex.data());

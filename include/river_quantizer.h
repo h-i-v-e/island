@@ -1,5 +1,6 @@
 #include "island.h"
 #include "vector2int.h"
+#include "height_map.h"
 
 namespace motu {
 	struct QuantisedRiverNode : Vector2Int{
@@ -14,7 +15,10 @@ namespace motu {
 
 	QuantisedRiver &quantiseRiver(const Grid<float> &, const Island::VertexList &, QuantisedRiver &);
 
-	void dedupeQuantisedRivers(std::vector<QuantisedRiver*> &);
+	//rivers are deduped and the rivers they join are mapped with the same offsets in flowIntos
+	void dedupeQuantisedRivers(std::vector<QuantisedRiver*> &rivers, std::vector<int> &flowIntos);
 
-	MeshWithUV &createQuantisedRiverMesh(Grid<float> &, const QuantisedRiver &, MeshWithUV &mesh);
+	MeshWithUV &createQuantisedRiverMesh(HeightMap &, const QuantisedRiver &, MeshWithUV &mesh, float seaLevel, float maxFlow);
+
+	void joinQuantisedRiverMeshes(MeshWithUV &from, const MeshWithUV &to);
 }

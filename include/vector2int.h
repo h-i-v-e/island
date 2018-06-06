@@ -11,6 +11,8 @@ namespace motu {
 
 		Vector2Int(int x, int y) : x(x), y(y) {}
 
+		Vector2Int(float x, float y) : x(static_cast<int>(x)), y(static_cast<int>(y)) {}
+
 		size_t hash() const {
 			return x * HASH_PRIME_A * y * HASH_PRIME_B;
 		}

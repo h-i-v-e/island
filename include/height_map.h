@@ -1,7 +1,11 @@
 #include "grid.h"
 
+#ifndef MOTU_HEIGHT_MAP
+#define MOTU_HEIGHT_MAP
+
 namespace motu {
 	struct Mesh;
+	struct Vector3;
 
 	class HeightMap : public Grid<float> {
 	public:
@@ -11,6 +15,14 @@ namespace motu {
 
 		void load(const Mesh &mesh);
 
+		void smooth();
+
+		float interpTLBR(float x, float y);
+
+		float interpTRBL(float x, float y);
+
+		void raise(const Vector3 &);
+
 		float seaLevel() const {
 			return mSeaLevel;
 		}
@@ -18,3 +30,4 @@ namespace motu {
 		float mSeaLevel;
 	};
 }
+#endif

@@ -15,6 +15,15 @@ using namespace motu;
 namespace {
 	void ExportAMesh(ExportMesh &exp, Mesh *mesh) {
 		exp.handle = mesh;
+		if (!mesh) {
+			exp.normals.data = nullptr;
+			exp.normals.length = 0;
+			exp.vertices.data = nullptr;
+			exp.vertices.length = 0;
+			exp.triangles.data = nullptr;
+			exp.triangles.length = 0;
+			return;
+		}
 		exp.normals.data = reinterpret_cast<Vector3Export*>(mesh->normals.data());
 		exp.normals.length = static_cast<int>(mesh->normals.size());
 		exp.vertices.data = reinterpret_cast<Vector3Export*>(mesh->vertices.data());
@@ -60,6 +69,7 @@ ExportHeightMap *CreateHeightMap(void *motu, int resolution) {
 	island->lod(0).slice(BoundingBox(Vector3(0.0f, 0.0f, -0.02f), Vector3(1.0f, 1.0f, 1.0f)), mesh);
 	HeightMap *hm = new HeightMap(resolution, resolution);
 	hm->load(mesh);
+	hm->smooth();
 	return reinterpret_cast<ExportHeightMap*>(hm);
 }
 
@@ -123,20 +133,56 @@ void CreateQuantisedRiverMeshes(void *motu, ExportHeightMap *ehm, ExportQuantise
 		quantiseRiver(*hm, *island->riverVertexLists()[i], outputs[i]);
 	}
 	std::vector<QuantisedRiver*> buffer(len);
+	std::vector<int> joinTos;
 	for (size_t i = 0; i != len; ++i) {
 		buffer[i] = outputs.data() + i;
 	}
-	dedupeQuantisedRivers(buffer);
+	dedupeQuantisedRivers(buffer, joinTos);
+	int maxFlow = 0;
+	for (const auto &i : outputs) {
+		if (i.back().flow > maxFlow) {
+			maxFlow = i.back().flow;
+		}
+	}
+	float mf = sqrtf(static_cast<float>(maxFlow));
+	std::vector<MeshWithUV*> meshes;
+	meshes.reserve(buffer.size());
 	for (size_t i = 0; i != len; ++i) {
-		MeshWithUV *mesh = new MeshWithUV;
-		createQuantisedRiverMesh(*hm, outputs[i], *mesh);
+		QuantisedRiver *river = buffer[i];
+		if (river->size() > 2) {
+			MeshWithUV *mesh = new MeshWithUV;
+			createQuantisedRiverMesh(*hm, *river, *mesh, hm->seaLevel(), mf);
+			meshes.push_back(mesh);
+		}
+		else {
+			meshes.push_back(nullptr);
+		}
+	}
+	for (size_t i = 0; i != len; ++i) {
+		if (joinTos[i] == -1) {
+			continue;
+		}
+		MeshWithUV *from = meshes[i], *to = meshes[joinTos[i]];
+		if (from && to && from->triangles.size() && to->triangles.size()) {
+			joinQuantisedRiverMeshes(*from, *to);
+		}
+	}
+	for (size_t i = 0; i != len; ++i) {
+		MeshWithUV *mesh = meshes[i];
 		ExportAMesh(exp->data[i].mesh, mesh);
-		exp->data[i].uv.length = static_cast<int>(mesh->uv.size());
-		exp->data[i].uv.data = reinterpret_cast<Vector2Export*>(mesh->uv.data());
-		exp->data[i].quantisedRiverNodes = new ExportQuantizedRiverNode[outputs[i].size()];
-		exp->data[i].numNodes = static_cast<int>(outputs[i].size());
-		for (size_t j = 0; j != outputs[i].size(); ++j) {
-			exp->data[i].quantisedRiverNodes[j] = *reinterpret_cast<ExportQuantizedRiverNode*>(outputs[i].data() + j);
+		QuantisedRiver *river = buffer[i];
+		if (mesh) {
+			exp->data[i].uv.length = static_cast<int>(mesh->uv.size());
+			exp->data[i].uv.data = reinterpret_cast<Vector2Export*>(mesh->uv.data());
+		}
+		else {
+			exp->data[i].uv.length = 0;
+			exp->data[i].uv.data = nullptr;
+		}
+		exp->data[i].quantisedRiverNodes = new ExportQuantizedRiverNode[river->size()];
+		exp->data[i].numNodes = static_cast<int>(river->size());
+		for (size_t j = 0; j != river->size(); ++j) {
+			exp->data[i].quantisedRiverNodes[j] = *reinterpret_cast<ExportQuantizedRiverNode*>(river->data() + j);
 		}
 	}
 }
