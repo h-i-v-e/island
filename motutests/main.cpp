@@ -158,7 +158,6 @@ inline float byteToFloat(uint32_t val, uint32_t shift) {
 }
 
 /*TEST_CASE("Continent", "Continent"){
-	return;
     random_device rd;
     default_random_engine rand(rd());
 	Island::Options options;

@@ -10,14 +10,14 @@
 #ifndef MAX_RIVER_DEPTH
 #define MAX_RIVER_DEPTH 3.0f
 #endif
-#ifndef TRIANGULATION_TLBR || TRIANGULATION_BLTR
+#if !defined(TRIANGULATION_TLBR) && !defined(TRIANGULATION_BLTR)
 #define TRIANGULATION_BLTR
 #endif
 #ifndef RIVER_UV_SCALE
-#define RIVER_UV_SCALE 0.25f;
+#define RIVER_UV_SCALE 0.25f
 #endif
 #ifndef RIVER_STRETCH
-#define RIVER_STRETCH 2.0f;
+#define RIVER_STRETCH 2.0f
 #endif
 
 
@@ -32,12 +32,17 @@ namespace {
 
 	struct Setter {
 		QuantisedRiver &out;
+		std::unordered_set<Vector2Int, Hasher<Vector2Int>> included;
 		int lastFlow;
 
 		Setter(QuantisedRiver &out) : out(out){}
 
 		void operator()(int x, int y) {
-			out.emplace_back(x, y, lastFlow);
+			Vector2Int v2(x, y);
+			if (included.find(v2) == included.end()) {
+				out.emplace_back(x, y, lastFlow);
+				included.insert(v2);
+			}
 		}
 	};
 
@@ -78,13 +83,106 @@ namespace {
 		return Vector2Int(static_cast<int>(roundf(v2.x)), static_cast<int>(roundf(v2.y)));
 	}
 
-	struct EndBuilder{
-		MeshWithUV &mesh;
-		const MeshWithUV &join;
-		int endVertA, endVertB;
+	struct EndBuilder {
+		HeightMap &hm;
+		MeshWithUV &mesh, &join;
+		int endVertA, endVertB, centreIdx;
 		std::vector<int> in;
+		std::unordered_set<int> affected;
+		std::vector<size_t> joinTriangles, meshTriangles;
 
-		EndBuilder(MeshWithUV &mesh, const MeshWithUV &join) : mesh(mesh), join(join){
+		EndBuilder(HeightMap &hm, MeshWithUV &mesh, MeshWithUV &join) : hm(hm), mesh(mesh), join(join) {
+		}
+
+		static void addBedTriangles(std::unordered_map<int, int> &added, Mesh &bed, const std::vector<size_t> &offsets, const MeshWithUV &mesh) {
+			for (size_t i : offsets) {
+				for (size_t j = 0; j != 3; ++j) {
+					int vert = mesh.triangles[i + j];
+					auto k = added.find(vert);
+					if (k == added.end()) {
+						k = added.emplace_hint(k, vert, bed.vertices.size());
+						bed.vertices.push_back(mesh.vertices[vert]);
+					}
+					bed.triangles.push_back(k->second);
+				}
+			}
+		}
+
+		typedef std::unordered_set<Vector2Int, Hasher<Vector2Int>> PixSet;
+
+		struct EdgePixAdder {
+			PixSet &ps;
+
+			EdgePixAdder(PixSet &ps) : ps(ps) {}
+
+			void operator()(int x, int y) {
+				ps.emplace(x, y);
+			}
+		};
+
+		static PixSet &getSmoothSet(const Mesh &mesh, PixSet &out) {
+			EdgePixAdder adder(out);
+			Bresenham<EdgePixAdder> bres(adder);
+			Mesh::PerimeterSet ps;
+			mesh.getPerimeterSet(ps);
+			for (auto i : ps.edgeSet) {
+				bres(mesh.vertices[i.first].x, mesh.vertices[i.first].y, mesh.vertices[i.second].x, mesh.vertices[i.second].y);
+			}
+			return out;
+		}
+
+		void createPoolBed() {
+			Mesh bed;
+			std::unordered_map<int, int> added;
+			addBedTriangles(added, bed, joinTriangles, join);
+			added.clear();
+			addBedTriangles(added, bed, meshTriangles, mesh);
+			float xScale = 1.0f / hm.width(), yScale = 1.0f / hm.height();
+			float deepest = bed.vertices.front().z - (yScale * 0.1f);
+			for (Vector3 &vert : bed.vertices) {
+				float depth = hm(vert.x, vert.y);
+				if (depth < deepest) {
+					deepest = depth;
+				}
+			}
+			for (Vector3 &vert : bed.vertices) {
+				vert.z = deepest;
+				vert.x *= xScale;
+				vert.y *= yScale;
+			}
+			bed.rasterize(hm);
+			PixSet ps;
+			getSmoothSet(bed, ps);
+			std::vector<std::pair<Vector2Int, float>> adjusted;
+			adjusted.reserve(ps.size());
+			static float diagWeight = 1.0f / sqrtf(2.0f);
+			float total = 0.0f, count = 0.0f;
+			for (const Vector2Int &pos : ps) {
+				int bx = pos.x == 0 ? 0 : pos.x - 1, by = pos.y == 0 ? 0 : pos.y - 1, ex = pos.x + 1, ey = pos.y + 1;
+				if (ex == hm.width()) {
+					--ex;
+				}
+				if (ey == hm.height()) {
+					--ey;
+				}
+				while (by <= ey) {
+					for (int j = bx; j <= ex; ++j) {
+						if (by != pos.y && j != pos.x) {
+							count += diagWeight;
+							total += hm(j, by) * diagWeight;
+						}
+						else {
+							count += 1.0f;
+							total += hm(j, by);
+						}
+					}
+					++by;
+				}
+				adjusted.emplace_back(pos, total / count);
+			}
+			for (const auto &i : adjusted) {
+				hm(i.first.x, i.first.y) = i.second;
+			}
 		}
 
 		bool findEndVertices() {
@@ -137,6 +235,7 @@ namespace {
 			if (!Triangle(mesh.vertices[a].asVector2(), mesh.vertices[b].asVector2(), mesh.vertices[c].asVector2()).isClockwise()) {
 				std::swap(b, c);
 			}
+			meshTriangles.push_back(mesh.triangles.size());
 			mesh.triangles.push_back(a);
 			mesh.triangles.push_back(b);
 			mesh.triangles.push_back(c);
@@ -148,7 +247,96 @@ namespace {
 			addTriangle(centreOffset, endVertA, endVertB);
 		}
 
-		void addRiverEnd(int centreOffset) {
+		/*struct UnClamper {
+			HeightMap &heightMap;
+			float lower;
+			std::unordered_set<Vector2Int, Hasher<Vector2Int>> visited;
+
+			UnClamper(HeightMap &heightMap) : heightMap(heightMap), lower(1.0f / heightMap.width()) {
+			}
+
+			void operator()(int x, int y) {
+				int maxX = x + 1;
+				if (maxX == heightMap.width()) {
+					--maxX;
+				}
+				int maxY = y + 1;
+				if (maxY == heightMap.height()) {
+					--maxX;
+				}
+				while (y <= maxY) {
+					for (int i = x; i <= maxX; ++i) {
+						Vector2Int pos(i, y);
+						if (visited.find(pos) == visited.end()) {
+							heightMap(i, y) -= lower;
+							visited.insert(pos);
+						}
+					}
+					++y;
+				}
+			}
+
+			void smooth() {
+				for (const Vector2Int &v : visited) {
+					int minX = v.x == 0 ? 0 : v.x - 1, minY = v.y == 0 ? 0 : v.y, maxX = v.x + 1, maxY = v.y + 1;
+					if (maxX == heightMap.width()) {
+						--maxX;
+					}
+					if (maxY == heightMap.height()) {
+						--maxY;
+					}
+					while (minY <= maxY){
+						for (int x = minX; x <= maxX; ++x) {
+							visited.emplace(x, minY);
+						}
+						++minY;
+					}
+				}
+				std::vector<std::pair<Vector2Int, float>> adjusted(visited.size());
+				for (const Vector2Int &v : visited) {
+					int minX = v.x == 0 ? 0 : v.x - 1, minY = v.y == 0 ? 0 : v.y, maxX = v.x + 1, maxY = v.y + 1;
+					if (maxX == heightMap.width()) {
+						--maxX;
+					}
+					if (maxY == heightMap.height()) {
+						--maxY;
+					}
+					float sum = 0.0f;
+					int count = 0;
+					while (minY <= maxY) {
+						for (int x = minX; x <= maxX; ++x) {
+							sum += heightMap(x, minY);
+							++count;
+						}
+						++minY;
+					}
+					adjusted.emplace_back(v, sum / count);
+				}
+				for (const auto &i : adjusted) {
+					heightMap(i.first.x, i.first.y) = i.second;
+				}
+			}
+		};
+
+		void unclampEdges() {
+			UnClamper unclamp(hm);
+			Bresenham<UnClamper> bres(unclamp);
+			for (size_t i = 1; i < in.size(); ++i) {
+				const Vector3 &a = mesh.vertices[in[i - 1]], &b = mesh.vertices[in[i]];
+				bres(static_cast<int>(a.x), static_cast<int>(a.y), static_cast<int>(b.x), static_cast<int>(b.y));
+			}
+			unclamp.smooth();
+		}*/
+
+		/*void fixDepth(int offset) {
+			const Vector3 &vec = mesh.vertices[offset];
+			hm(vec.x, vec.y) = vec.z - 3.0f;
+		}*/
+
+		void addRiverEnd() {
+			if (in.empty()) {
+				return;
+			}
 			for (size_t i = 0; i != in.size(); ++i) {
 				int replace = mesh.vertices.size();
 				mesh.vertices.push_back(join.vertices[in[i]]);
@@ -157,10 +345,11 @@ namespace {
 			}
 			for (size_t i = 1; i < in.size(); ++i) {
 				int a = in[i - 1], b = in[i];
-				if (!Triangle(mesh.vertices[centreOffset].asVector2(), mesh.vertices[a].asVector2(), mesh.vertices[b].asVector2()).isClockwise()) {
+				if (!Triangle(mesh.vertices[centreIdx].asVector2(), mesh.vertices[a].asVector2(), mesh.vertices[b].asVector2()).isClockwise()) {
 					std::swap(a, b);
 				}
-				mesh.triangles.push_back(centreOffset);
+				meshTriangles.push_back(mesh.triangles.size());
+				mesh.triangles.push_back(centreIdx);
 				mesh.triangles.push_back(a);
 				mesh.triangles.push_back(b);
 			}
@@ -169,15 +358,30 @@ namespace {
 			Vector2 aa = av - endA, ab = av - endB, ba = bv - endA, bb = bv - endB;
 			if (aa.sqrMagnitude() < ab.sqrMagnitude()) {
 				if (bb.sqrMagnitude() <= ba.sqrMagnitude()) {
-					completeCap(centreOffset, in.front(), in.back());
+					completeCap(centreIdx, in.front(), in.back());
 				}
 			}
 			else if (ba.sqrMagnitude() <= bb.sqrMagnitude()) {
-				completeCap(centreOffset, in.back(), in.front());
+				completeCap(centreIdx, in.back(), in.front());
+			}
+			//unclampEdges();
+		}
+
+		void flattenJoinPool() {
+			float deepest = mesh.vertices[endVertA].z < mesh.vertices[endVertB].z ? mesh.vertices[endVertA].z : mesh.vertices[endVertB].z;
+			for (int i : affected) {
+				float z = join.vertices[i].z;
+				if (z < deepest) {
+					deepest = z;
+				}
+			}
+			mesh.vertices[endVertA].z = mesh.vertices[endVertB].z = deepest;
+			for (int i : affected) {
+				join.vertices[i].z = deepest;
 			}
 		}
 
-		void createEndPiece(const std::vector<size_t> &joinTriangles) {
+		void createEndPiece() {
 			if (!findEndVertices()) {
 				return;
 			}
@@ -185,15 +389,18 @@ namespace {
 			std::unordered_set<int> addedA, addedB;
 			addedA.reserve(joinTriangles.size() << 1);
 			addedB.reserve(joinTriangles.size() << 1);
+			affected.reserve(joinTriangles.size());
 			for (size_t i : joinTriangles) {
 				for (size_t j = 0; j != 3; ++j) {
 					int offset = join.triangles[i + j];
 					std::unordered_set<int> &set = join.uv[offset].x < 0.0f ? addedA : addedB;
 					if (set.find(offset) == set.end()) {
 						set.insert(offset);
+						affected.insert(offset);
 					}
 				}
 			}
+			flattenJoinPool();
 			Vector2 centroidA = computeCentroid(addedA), centroidB = computeCentroid(addedB);
 			Vector2 endCentre = (va.asVector2() + vb.asVector2()) * 0.5f;
 			if ((centroidA - endCentre).sqrMagnitude() < (centroidB - endCentre).sqrMagnitude()) {
@@ -210,10 +417,11 @@ namespace {
 			Vector2 centreUv;
 			findHub(centre, centreUv);
 			sortByUv();
-			int centreOffset = mesh.vertices.size();
+			centreIdx = mesh.vertices.size();
 			mesh.vertices.push_back(centre);
 			mesh.uv.push_back(centreUv);
-			addRiverEnd(centreOffset);
+			addRiverEnd();
+			createPoolBed();
 		}
 	};
 
@@ -505,17 +713,47 @@ namespace {
 			return dir.z / len;
 		}
 
-		void clampEdges() {
-			for (Vector3 &vert : vertices) {
-#ifdef TRIANGULATION_TLBR
-				float height = grid.interpTLBR(vert.x, vert.y);
-#else
-				float height = grid.interpTRBL(vert.x, vert.y);
-#endif
-				if (vert.z > height) {
-					vert.z = height;
+		struct Clamper {
+			float minHeight;
+			HeightMap &heightMap;
+
+			Clamper(HeightMap &heightMap, float minHeight) : heightMap(heightMap), minHeight(minHeight) {
+
+			}
+
+			void operator()(int x, int y) {
+				int maxX = x + 1;
+				if (maxX == heightMap.width()) {
+					--maxX;
+				}
+				int maxY = y + 1;
+				if (maxY == heightMap.height()) {
+					--maxX;
+				}
+				while (y <= maxY) {
+					for (int i = x; i <= maxX; ++i) {
+						float height = heightMap(i, y);
+						if (height < minHeight) {
+							heightMap(i, y) = minHeight;
+						}
+					}
+					++y;
 				}
 			}
+		};
+
+		void clampEdges(const std::vector<int> &side) {
+			for (size_t i = 1, j = side.size() - 1; i < j; ++i){
+				const Vector3 &a = vertices[side[i - 1]], &b = vertices[side[i]];
+				Clamper clamper(grid, std::max(a.z, b.z));
+				Bresenham<Clamper> bresenham(clamper);
+				bresenham(a.x, a.y, b.x, b.y);
+			}
+		}
+
+		void clampEdges() {
+			clampEdges(leftVerts);
+			clampEdges(rightVerts);
 		}
 	};
 }
@@ -527,10 +765,13 @@ QuantisedRiver &motu::quantiseRiver(const Grid<float> &grid, const Island::Verte
 		Coords current(list[i].vertex, grid, list[i].flow);
 		bresenham.setter.lastFlow = list[i].flow;
 		bresenham(last.x, last.y, current.x, current.y);
-		out.pop_back();
+		//out.pop_back();
 		last = current;
 	}
-	out.emplace_back(last.x, last.y, last.flow);
+	if (!out.empty()) {
+		out.pop_back();
+		out.emplace_back(last.x, last.y, last.flow);
+	}
 	return out;
 }
 
@@ -599,10 +840,11 @@ MeshWithUV &motu::createQuantisedRiverMesh(HeightMap &grid, const QuantisedRiver
 	return mc.copyToMesh(mesh, seaLevel);
 }
 
-void motu::dedupeQuantisedRivers(std::vector<QuantisedRiver*> &rivers, std::vector<int> &flowIntos) {
+void motu::dedupeQuantisedRivers(const HeightMap &grid, std::vector<QuantisedRiver*> &rivers, std::vector<int> &flowIntos) {
 	flowIntos.insert(flowIntos.begin(), rivers.size(), -1);
-	std::sort(rivers.begin(), rivers.end(), [](const QuantisedRiver *a, const QuantisedRiver *b) {
-		return a->size() > b->size();
+	std::sort(rivers.begin(), rivers.end(), [&grid](const QuantisedRiver *a, const QuantisedRiver *b) {
+		Vector2Int va(a->back().x, a->back().y), vb(b->back().x, b->back().y);
+		return grid(va.x, va.y) < grid(vb.x, vb.y);
 	});
 	std::unordered_map<QuantisedRiverNode, int, Hasher<QuantisedRiverNode>> usedNodes;
 	for (int j = 0; j != rivers.size(); ++j) {
@@ -611,7 +853,13 @@ void motu::dedupeQuantisedRivers(std::vector<QuantisedRiver*> &rivers, std::vect
 			auto k = usedNodes.find((*river)[i]);
 			if (k != usedNodes.end()) {
 				river->resize(i + 1);
-				flowIntos[j] = k->second;
+				if (flowIntos[j] == -1) {
+					flowIntos[j] = k->second;
+				}
+				else {
+					//TODO: Big bug causes 3 way joinm, ust sort out properly some day
+					river->resize(0);
+				}
 				continue;
 			}
 			usedNodes.emplace((*river)[i], j);
@@ -620,7 +868,7 @@ void motu::dedupeQuantisedRivers(std::vector<QuantisedRiver*> &rivers, std::vect
 
 }
 
-void motu::joinQuantisedRiverMeshes(MeshWithUV &from, const MeshWithUV &to) {
+void motu::joinQuantisedRiverMeshes(HeightMap &hm, MeshWithUV &from, MeshWithUV &to) {
 	typedef BRTree<BoundingRectangle, size_t> Tree;
 	Tree tree(to.triangles.size() / 3);
 	for (size_t i = 2; i < to.triangles.size(); i += 3) {
@@ -636,7 +884,7 @@ void motu::joinQuantisedRiverMeshes(MeshWithUV &from, const MeshWithUV &to) {
 	std::vector<int> collapsedList;
 	collapsedList.reserve(from.triangles.size());
 	std::vector<int> included(from.vertices.size(), -1);
-	std::vector<size_t> glueTo;
+	EndBuilder endBuilder(hm, from, to);
 	int offset = 0;
 	for (size_t i = 2; i < from.triangles.size(); i += 3) {
 		Triangle tri(
@@ -657,7 +905,7 @@ void motu::joinQuantisedRiverMeshes(MeshWithUV &from, const MeshWithUV &to) {
 				);
 				for (size_t k = 0; k != 3; ++k) {
 					if (test.intersects(edges[k])) {
-						glueTo.push_back(*j.first);
+						endBuilder.joinTriangles.push_back(*j.first);
 						intersected = true;
 						break;
 					}
@@ -691,9 +939,8 @@ void motu::joinQuantisedRiverMeshes(MeshWithUV &from, const MeshWithUV &to) {
 	from.vertices = newVerts;
 	from.uv = newUvs;
 	from.triangles = collapsedList;
-	if (!glueTo.empty()) {
-		EndBuilder endBuilder(from, to);
-		endBuilder.createEndPiece(glueTo);
+	if (!endBuilder.joinTriangles.empty()) {
+		endBuilder.createEndPiece();
 	}
 	from.normals.clear();
 	from.calculateNormals();

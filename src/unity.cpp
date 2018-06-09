@@ -69,7 +69,9 @@ ExportHeightMap *CreateHeightMap(void *motu, int resolution) {
 	island->lod(0).slice(BoundingBox(Vector3(0.0f, 0.0f, -0.02f), Vector3(1.0f, 1.0f, 1.0f)), mesh);
 	HeightMap *hm = new HeightMap(resolution, resolution);
 	hm->load(mesh);
-	hm->smooth();
+	for (int i = 0; i != 16; ++i) {
+		hm->smooth();
+	}
 	return reinterpret_cast<ExportHeightMap*>(hm);
 }
 
@@ -137,10 +139,10 @@ void CreateQuantisedRiverMeshes(void *motu, ExportHeightMap *ehm, ExportQuantise
 	for (size_t i = 0; i != len; ++i) {
 		buffer[i] = outputs.data() + i;
 	}
-	dedupeQuantisedRivers(buffer, joinTos);
+	dedupeQuantisedRivers(*hm, buffer, joinTos);
 	int maxFlow = 0;
 	for (const auto &i : outputs) {
-		if (i.back().flow > maxFlow) {
+		if (!i.empty() && i.back().flow > maxFlow) {
 			maxFlow = i.back().flow;
 		}
 	}
@@ -164,7 +166,7 @@ void CreateQuantisedRiverMeshes(void *motu, ExportHeightMap *ehm, ExportQuantise
 		}
 		MeshWithUV *from = meshes[i], *to = meshes[joinTos[i]];
 		if (from && to && from->triangles.size() && to->triangles.size()) {
-			joinQuantisedRiverMeshes(*from, *to);
+			joinQuantisedRiverMeshes(*hm, *from, *to);
 		}
 	}
 	for (size_t i = 0; i != len; ++i) {

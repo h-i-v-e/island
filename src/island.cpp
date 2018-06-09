@@ -325,15 +325,15 @@ namespace {
 		Rivers *rivers = new Rivers(nw, mep, lakes, options.riverDepth, 2.0f);
 		rivers->smooth(nw, mep);
 		//applySeaErosian(mep, nw, 0.0001f);
-		rivers->carveInto(nw, mep, options.maxRiverGradient * 16.0f);
+		rivers->carveInto(nw, mep, options.maxRiverGradient * 8.0f);
 		//Lake::carveInto(nw, lakes);
 		delete *river;
 		*river = rivers;
-		for (int i = 0; i != 3; ++i) {
+		/*for (int i = 0; i != 3; ++i) {
 			eatCoastlines(mep, nw);
 		}
 		improveCliffs(mep, nw);
-		formBeaches(mep, nw);
+		formBeaches(mep, nw);*/
 		//applySeaErosian(mep, nw, 0.0001f);
 	}
 
@@ -341,7 +341,7 @@ namespace {
 		delete *rivers;
 		//lakes.clear();
 		MeshEdgeMap mep(mesh);
-		*rivers = new Rivers(mesh, mep, lakes, options.riverDepth, 16.0f);
+		*rivers = new Rivers(mesh, mep, lakes, options.riverDepth, 50.0f * options.maxZ);
 		(*rivers)->smooth(mesh, mep);
 		(*rivers)->carveInto(mesh, mep, options.maxRiverGradient);
 		//Lake::carveInto(mesh, lakes);
@@ -382,6 +382,12 @@ namespace {
 				list->emplace_back(mesh.vertices[j.index], j.flow);
 			}
 			lists.push_back(list);
+		}
+	}
+
+	void lowerMesh(Mesh &mesh, float amount) {
+		for (Vector3 &vert : mesh.vertices) {
+			vert.z -= amount;
 		}
 	}
 
@@ -428,12 +434,18 @@ void Island::generateTopology(std::default_random_engine &rd, const Options &opt
 	//createRiverMeshes(*rivers, preSlice[1], mRiverMeshes);
 	preSlice[0] = preSlice[1];
 	preSlice[0].tesselate()/*.tesselate().smooth()*/;
-	MeshEdgeMap mep(preSlice[0]);
-	formBeaches(mep, preSlice[0]);
+
+	//formBeaches(mep, preSlice[0]);
 	finalRiverPass(&rivers, preSlice[0], Lake::Lakes(), options);
 	createRiverMeshes(*rivers, preSlice[0], mRiverMeshes);
 	createRiverLists(preSlice[0], *rivers, mRiverVertexLists);
-	preSlice[0].tesselate().smooth();
+	preSlice[0].tesselate()/*.smooth()*/;
+	MeshEdgeMap mep(preSlice[0]);
+	for (int i = 0; i != 16; ++i) {
+		eatCoastlines(mep, preSlice[0]);
+	}
+	formBeaches(mep, preSlice[0]);
+	preSlice[0].smooth();
 	/*for (int i = 0; i != 3; ++i) {
 		eatCoastlines(mep, preSlice[0]);
 	}*/
@@ -442,6 +454,7 @@ void Island::generateTopology(std::default_random_engine &rd, const Options &opt
 	//smoothCoastlines(MeshEdgeMap(lods[0]), lods[0]);
 	//improveCliffs(lods[0]);
 	//seaErode(lods[0], options.erosianPasses >> 2);
+	lowerMesh(preSlice[0], maxZ * 0.01f);
 	correctLods(preSlice);
 	for (int i = 0; i != 3; ++i) {
 		preSlice[i].slice(BoundingBox(0.0f, 0.0f, -0.02f, 1.0f, 1.0f, 1.0f), lods[i]);

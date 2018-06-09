@@ -335,6 +335,9 @@ namespace {
 	}
 
 	void emplaceRiver(int minFlow, std::vector<int> &flow, const std::vector<int> &river, std::vector<std::shared_ptr<River>> &rivers) {
+		if (river.size() < 2) {
+			return;
+		}
 		rivers.emplace_back(std::make_shared<River>());
 		River &r = *rivers.back();
 		r.vertices.reserve(river.size());
@@ -386,6 +389,41 @@ namespace {
 			}
 		}
 	}
+
+	void carveRiverValley(std::unordered_set<int> carved, Mesh &mesh, const MeshEdgeMap &edges, const River &river, float depthMultiplier) {
+		static float maxOut = 3.0f;
+		std::stack<std::pair<int, int>> unfurl;
+		for (const auto &i : river.vertices) {
+			float carve = sqrtf(i.flow) * depthMultiplier;
+			int steps = roundf(carve * maxOut);
+			if (steps == 0) {
+				continue;
+			}
+			auto j = edges.vertex(i.index);
+			while (j.first != j.second) {
+				if (carved.find(*j.first) == carved.end()) {
+					unfurl.emplace(*j.first, steps);
+					carved.insert(*j.first);
+				}
+				++j.first;
+			}
+			while (!unfurl.empty()) {
+				auto k = unfurl.top();
+				unfurl.pop();
+				mesh.vertices[k.first].z -= mesh.vertices[k.first].z * carve * 0.5f;
+				if (k.second > 1) {
+					auto l = edges.vertex(k.first);
+					while (l.first != l.second) {
+						if (carved.find(*l.first) == carved.end()) {
+							unfurl.emplace(*l.first, k.second - 1);
+							carved.insert(*l.first);
+						}
+						++l.first;
+					}
+				}
+			}
+		}
+	}
 }
 
 Rivers::Rivers(Mesh &mesh, const MeshEdgeMap &edges, Lake::Lakes &lakes, float depthMul, float flowSDthreshold) {
@@ -399,6 +437,9 @@ Rivers::Rivers(Mesh &mesh, const MeshEdgeMap &edges, Lake::Lakes &lakes, float d
 		traceToSea(source, mesh, edges, river, in, lakes);
 		emplaceRiver(0, flow, river, mRivers);
 	}
+	std::sort(mRivers.begin(), mRivers.end(), [&mesh](const River::Ptr &a, const River::Ptr &b) {
+		return mesh.vertices[a->vertices.back().index].z > mesh.vertices[b->vertices.back().index].z;
+	});
 	mergeRivers(mRivers);
 	int maxFlow = 0;
 	for (const auto &river : mRivers) {
@@ -409,7 +450,7 @@ Rivers::Rivers(Mesh &mesh, const MeshEdgeMap &edges, Lake::Lakes &lakes, float d
 			maxFlow = river->vertices.back().flow;
 		}
 	}
-	depthMultiplier = depthMul / sqrtf(static_cast<float>(maxFlow));
+	depthMultiplier = /*depthMul*/1.0f / sqrtf(static_cast<float>(maxFlow));
 }
 
 void Rivers::carveInto(Mesh &mesh, const MeshEdgeMap &em, float maxGradient) const{
@@ -428,9 +469,9 @@ void Rivers::carveInto(Mesh &mesh, const MeshEdgeMap &em, float maxGradient) con
 			float mag = direction.magnitude();
 			float slope = direction.z / mag;
 			if (last->z >= 0.0f && slope > maxGradient) {
-				if (slope < 0.8f) {
+				//if (slope < 0.8f) {
 					current->z = last->z + mag * maxGradient;
-				}
+				//}
 				//otherwise a waterfall.
 			}
 			last = current;
@@ -448,7 +489,8 @@ void Rivers::carveInto(Mesh &mesh, const MeshEdgeMap &em, float maxGradient) con
 	}
 	for (const auto &river : copy){
 		for (auto i = river->vertices.begin(); i != river->vertices.end(); ++i) {
-			float z = mesh.vertices[i->index].z, surface = surfaces[i->index], target = sqrtf(static_cast<float>(i->flow)) * depthMultiplier;
+			float z = mesh.vertices[i->index].z, surface = surfaces[i->index];
+			float target = z * sqrtf(static_cast<float>(i->flow)) * depthMultiplier;
 			float depth = surface - z;
 			if (depth < target) {
 				mesh.vertices[i->index].z -= (target - depth);
@@ -458,8 +500,18 @@ void Rivers::carveInto(Mesh &mesh, const MeshEdgeMap &em, float maxGradient) con
 	for (const auto &river : copy) {
 		//float surface = -1.0f;
 		for (auto i = river->vertices.begin(); i != river->vertices.end(); ++i) {
-			i->surface = surfaces[i->index] - sqrtf(static_cast<float>(i->flow)) * depthMultiplier * 0.5f;
+			/*i->surface = surfaces[i->index] - sqrtf(static_cast<float>(i->flow)) * depthMultiplier * 0.5f;*/
+			i->surface = surfaces[i->index] - mesh.vertices[i->index].z * sqrtf(static_cast<float>(i->flow)) * depthMultiplier * 0.5f;
 		}
+	}
+	std::unordered_set<int> visited;
+	for (const auto &i : mRivers) {
+		for (const auto &j : i->vertices) {
+			visited.insert(j.index);
+		}
+	}
+	for (const auto &i : mRivers) {
+		carveRiverValley(visited, mesh, em, *i, depthMultiplier);
 	}
 }
 
