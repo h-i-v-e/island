@@ -35,20 +35,22 @@ namespace motu {
 	public:
 		typedef std::vector<River::Ptr> RiverList;
 
-		Rivers(Mesh &mesh, const MeshEdgeMap &, Lake::Lakes &lakes, float depthMultiplier, float flowSDthreshold = 3.0f);
+		Rivers(Mesh &mesh, float maxHeight, float flowSDthreshold);
 
 		const RiverList &riverList() const{
 			return mRivers;
 		}
 
-		void smooth(Mesh &mesh, const MeshEdgeMap &) const;
+		void addaptToTesselation(const Mesh &old, const Mesh &tesselated);
 
-		void carveInto(Mesh &mesh, const MeshEdgeMap &, float maxGradient) const;
+		void smooth(Mesh &mesh) const;
 
-		Mesh &getMesh(const River &, const Mesh &, const MeshTriangleMap &, Mesh &) const;
+		void carveInto(Mesh &mesh, float maxGradient) const;
+
+		Mesh &getMesh(const River &, const Mesh &, Mesh &) const;
 	private:
 		RiverList mRivers;
-		float depthMultiplier;
+		float depthMultiplier, maxHeight;
 	};
 }
 

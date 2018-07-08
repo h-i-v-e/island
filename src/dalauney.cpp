@@ -1,6 +1,6 @@
 #include "dalauney.h"
 #include "mesh.h"
-#include "brtree.h"
+#include "rtree.h"
 
 using namespace motu;
 
@@ -17,7 +17,6 @@ using namespace motu;
 
 #include "vector2.h"
 #include "triangle3.h"
-#include "brtree.h"
 #include "mesh.h"
 
 namespace {
@@ -55,7 +54,7 @@ namespace {
 		}
 	};
 
-	typedef BRTree<BoundingRectangle, TriangleWithCircumcircle> RTree;
+	typedef RTree<TriangleWithCircumcircle, float, 2> Tree;
 
 	Triangle3 CreateBoundingTriangle(const std::vector<Vector3> &points) {
 		BoundingRectangle bounds;
@@ -84,59 +83,58 @@ namespace {
 		return false;
 	}
 
-	bool AddBadTriangles(const Vector2 &point, std::vector<TriangleWithCircumcircle> &badTriangles, const RTree &rTree, typename RTree::Values &buf) {
-		auto pair = rTree.containing(point, buf);
-		while (pair.first != pair.second) {
-			if (pair.first->triangle.toTriangle2().hasVertex(point)) {
+	bool AddBadTriangles(const Vector2 &point, std::vector<TriangleWithCircumcircle> &badTriangles, const Tree &rTree/*, typename RTree::Values &buf*/) {
+		rTree.Search(&point.x, &point.x, [&badTriangles, &point](const TriangleWithCircumcircle &tri) {
+			if (tri.triangle.toTriangle2().hasVertex(point)) {
 				return false;
 			}
-			if (pair.first->circumcircle.contains(point)) {
-				badTriangles.push_back(*pair.first);
+			if (tri.circumcircle.contains(point)) {
+				badTriangles.push_back(tri);
 			}
-			++pair.first;
-		}
+			return true;
+		});
 		return true;
 	}
 }
 
 Mesh &motu::createDalauneyMesh(const std::vector<Vector3> &vertices, Mesh &out) {
 	int expectedTriangles = static_cast<int>(vertices.size() - 2);
-	RTree rTree(expectedTriangles);
+	Tree rTree;
 	TriangleWithCircumcircle super(CreateBoundingTriangle(vertices));
-	rTree.add(super.circumcircle.boundingRectangle(), super);
+	BoundingRectangle rect = super.circumcircle.boundingRectangle();
+	rTree.Insert(&rect.topLeft.x, &rect.bottomRight.x, super);
 	std::vector<TriangleWithCircumcircle> badTriangles;
-	typename RTree::Values searchBuffer;
-	searchBuffer.reserve(expectedTriangles);
 	std::vector<Spline> poly;
 	for (const Vector3 &point : vertices) {
-		if (!AddBadTriangles(point.asVector2(), badTriangles, rTree, searchBuffer)) {
+		if (!AddBadTriangles(point.asVector2(), badTriangles, rTree)) {
 			continue;
 		}
 		for (auto i = badTriangles.begin(); i != badTriangles.end(); ++i) {
 			i->findUnsharedEdges(badTriangles.begin(), badTriangles.end(), poly);
 		}
 		for (auto bad : badTriangles) {
-			rTree.remove(bad.circumcircle.boundingRectangle(), bad);
+			rect = bad.circumcircle.boundingRectangle();
+			rTree.Remove(&rect.topLeft.x, &rect.bottomRight.x, bad);
 		}
 		for (auto edge : poly) {
 			TriangleWithCircumcircle tri(Triangle3(edge.endA, edge.endB, point));
 			if (tri.triangle.normal().z <= 0.0f) {
 				tri.triangle.flipRotation();
 			}
-			rTree.add(tri.circumcircle.boundingRectangle(), tri);
+			rect = tri.circumcircle.boundingRectangle();
+			rTree.Insert(&rect.topLeft.x, &rect.bottomRight.x, tri);
 		}
 		poly.clear();
 		badTriangles.clear();
 	}
-	auto pair = rTree.all(searchBuffer);
 	std::vector<Triangle3> t3s;
-	t3s.reserve(searchBuffer.size());
+	t3s.reserve(rTree.Count());
 	Triangle supt2 = super.triangle.toTriangle2();
-	while (pair.first != pair.second) {
-		if (!OfSuperTriangle(supt2, pair.first->triangle.toTriangle2())) {
-			t3s.push_back(pair.first->triangle);
+	Tree::Iterator itr;
+	for (rTree.GetFirst(itr); itr.IsNotNull(); rTree.GetNext(itr)) {
+		if (!OfSuperTriangle(supt2, (*itr).triangle.toTriangle2())) {
+			t3s.push_back((*itr).triangle);
 		}
-		++pair.first;
 	}
 	out.load(t3s);
 	return out;

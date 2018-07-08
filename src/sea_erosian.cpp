@@ -2,6 +2,7 @@
 #include "mesh_edge_map.h"
 #include "mesh_triangle_map.h"
 #include "mesh.h"
+#include "decoration.h"
 
 #include <memory>
 #include <limits>
@@ -11,20 +12,17 @@ using namespace motu;
 
 namespace {
 	struct CoastMapper {
-		const MeshEdgeMap *mep;
-		//const MeshTriangleMap mtp;
 		const Mesh *mesh;
 		std::vector<bool> visited;
-		//Coastlines *coasts;
 
-		CoastMapper(const MeshEdgeMap &mep, const Mesh &mesh/*, Coastlines &coasts*/) : mep(&mep)/*, mtp(mesh)*/, mesh(&mesh), visited(mesh.vertices.size(), false)/*, coasts(&coasts)*/{
+		CoastMapper(const Mesh &mesh) : mesh(&mesh), visited(mesh.vertices.size(), false){
 		}
 
 		bool onCoast(int offset) const{
 			if (mesh->vertices[offset].z < 0.0f) {
 				return false;
 			}
-			auto edges = mep->vertex(offset);
+			auto edges = mesh->edgeMap().vertex(offset);
 			while (edges.first != edges.second) {
 				if (mesh->vertices[*edges.first].z < 0.0f) {
 					return true;
@@ -63,9 +61,10 @@ namespace {
 		}*/
 
 		int findInlandJoin(int last, int offset, int next) {
-			auto ledges = mep->vertex(last);
-			auto oedges = mep->vertex(offset);
-			auto nedges = mep->vertex(next);
+			const MeshEdgeMap &mep = mesh->edgeMap();
+			auto ledges = mep.vertex(last);
+			auto oedges = mep.vertex(offset);
+			auto nedges = mep.vertex(next);
 			while (ledges.first != ledges.second) {
 				for (auto i = oedges.first; i != oedges.second; ++i) {
 					if (*ledges.first == *i) {
@@ -82,9 +81,10 @@ namespace {
 		}
 
 		int findSeaJoin(int last, int offset, int next) {
-			auto ledges = mep->vertex(last);
-			auto oedges = mep->vertex(offset);
-			auto nedges = mep->vertex(next);
+			const MeshEdgeMap &mep = mesh->edgeMap();
+			auto ledges = mep.vertex(last);
+			auto oedges = mep.vertex(offset);
+			auto nedges = mep.vertex(next);
 			while (ledges.first != ledges.second) {
 				for (auto i = oedges.first; i != oedges.second; ++i) {
 					if (*ledges.first == *i) {
@@ -101,7 +101,7 @@ namespace {
 		}
 
 		int getSeaRatio(int last, int offset, int next) {
-			auto edges = mep->vertex(offset);
+			auto edges = mesh->edgeMap().vertex(offset);
 			int sea = 0;
 			while (edges.first != edges.second) {
 				int vert = *edges.first++;
@@ -120,9 +120,10 @@ namespace {
 		void followCoast(int offset, std::vector<std::pair<int, int>> &out, std::function<int(int, int, int)> setSecond) {
 			out.emplace_back(offset, -1);
 			visited[offset] = true;
+			const MeshEdgeMap &mep = mesh->edgeMap();
 			for (bool going = true; going;){
 				going = false;
-				auto edges = mep->vertex(offset);
+				auto edges = mep.vertex(offset);
 				while (edges.first != edges.second) {
 					int i = *edges.first++;
 					if ((!visited[i]) && onCoast(i)) {
@@ -132,7 +133,6 @@ namespace {
 						going = true;
 						break;
 					}
-					//++edges.first;
 				}
 			}
 			if (out.size() < 3) {
@@ -193,17 +193,17 @@ namespace {
 	}*/
 
 
-	float smooth(const MeshEdgeMap &mep, Mesh &mesh, int offset) {
+	float smooth(Mesh &mesh, int offset) {
 		float total = mesh.vertices[offset].z;
 		int count = 1;
-		for (auto n = mep.vertex(offset); n.first != n.second; ++n.first, ++count) {
+		for (auto n = mesh.edgeMap().vertex(offset); n.first != n.second; ++n.first, ++count) {
 			total += mesh.vertices[*n.first].z;
 		}
 		return total / static_cast<float>(count);
 	}
 
-	void raiseSeaNeighbours(const MeshEdgeMap &mep, Mesh &mesh, int offset) {
-		for (auto n = mep.vertex(offset); n.first != n.second; ++n.first) {
+	void raiseSeaNeighbours(Mesh &mesh, int offset) {
+		for (auto n = mesh.edgeMap().vertex(offset); n.first != n.second; ++n.first) {
 			int offset = *n.first;
 			Vector3 &pos = mesh.vertices[offset];
 			if (pos.z < 0.0f) {
@@ -211,49 +211,33 @@ namespace {
 			}
 		}
 	}
+
+	float findLowestNeighbourZ(Mesh &mesh, int offset) {
+		float lowest = mesh.vertices[offset].z;
+		for (auto n = mesh.edgeMap().vertex(offset); n.first != n.second; ++n.first) {
+			float z = mesh.vertices[*n.first].z;
+			if (z < lowest) {
+				lowest = z;
+			}
+		}
+		return lowest;
+	}
+
+	float GetRockChance(const Mesh &mesh, int offset) {
+		return (1.0f - mesh.normals[offset].dot(Vector3::unitZ()));
+	}
 }
 
-void motu::mapCoastlines(const MeshEdgeMap &mep, const Mesh &mesh, Coastlines &coastlines) {
-	CoastMapper coastMapper(mep, mesh);
+void motu::mapCoastlines(const Mesh &mesh, Coastlines &coastlines) {
+	CoastMapper coastMapper(mesh);
 	coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &out) {
 		coastMapper.followCoastWithJoins(offset, out);
 	});
 }
 
 void motu::improveCliffs(Mesh &mesh) {
-	improveCliffs(MeshEdgeMap(mesh), mesh);
-}
-
-void motu::improveCliffs(const MeshEdgeMap &mep, Mesh &mesh) {
 	Coastlines coastlines;
-	mapCoastlines(mep, mesh, coastlines);
-	/*for (const auto &i : coastlines) {
-		int lastTriangle = -1, lastVert;
-		for (auto j : *i) {
-			if (j.second == lastTriangle) {
-				int inside;
-				Vector2 total = Vector2::zero();
-				for (int k = 0; k != 3; ++k) {
-					int vert = mesh.triangles[j.second + k];
-					if (vert != j.first && vert != lastVert) {
-						inside = vert;
-					}
-					total += mesh.vertices[vert].asVector2();
-				}
-				total /= 3.0f;
-				mesh.vertices[inside].x = total.x;
-				mesh.vertices[inside].y = total.y;
-				for (int k = 0; k != 3; ++k) {
-					int vert = mesh.triangles[j.second + k];
-					if (vert != inside) {
-						mesh.vertices[vert].z = 0.0f;
-					}
-				}
-			}
-			lastTriangle = j.second;
-			lastVert = j.first;
-		}
-	}*/
+	mapCoastlines(mesh, coastlines);
 	for (const auto &i : coastlines) {
 		for (auto j : *i) {
 			if (j.second != -1) {
@@ -268,12 +252,8 @@ void motu::improveCliffs(const MeshEdgeMap &mep, Mesh &mesh) {
 }
 
 void motu::applySeaErosian(Mesh &mesh, float strength) {
-	applySeaErosian(MeshEdgeMap(mesh), mesh, strength);
-}
-
-void motu::applySeaErosian(const MeshEdgeMap &mep, Mesh &mesh, float strength) {
 	Coastlines coastlines;
-	CoastMapper coastMapper(mep, mesh);
+	CoastMapper coastMapper(mesh);
 	coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &section) {
 		coastMapper.followCoastWithSeaCount(offset, section);
 	});
@@ -291,23 +271,29 @@ void motu::applySeaErosian(const MeshEdgeMap &mep, Mesh &mesh, float strength) {
 	}
 }
 
-void motu::eatCoastlines(const MeshEdgeMap &mep, Mesh &mesh) {
+void motu::eatCoastlines(Mesh &mesh) {
 	Coastlines coastlines;
-	CoastMapper coastMapper(mep, mesh);
+	CoastMapper coastMapper(mesh);
 	coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &section) {
 		coastMapper.followCoastWithSeaJoins(offset, section);
 	});
 	for (auto i = coastlines.begin(); i != coastlines.end(); ++i) {
 		for (auto j = (*i)->begin(); j != (*i)->end(); ++j) {
 			if (j->second != -1) {
-				mesh.vertices[j->first].z = mesh.vertices[j->second].z;
+				if (mesh.vertices[j->second].z >= 0.0f) {
+					exit(1);
+				}
+				//mesh.vertices[j->first].z = mesh.vertices[j->second].z;
+				float z = findLowestNeighbourZ(mesh, j->second);
+				mesh.vertices[j->first].z = z;
+				mesh.vertices[j->second].z = z;
 			}
 		}
 	}
 }
 
-void motu::smoothCoastlines(const MeshEdgeMap &mep, Mesh &mesh) {
-	CoastMapper coastMapper(mep, mesh);
+void motu::smoothCoastlines(Mesh &mesh) {
+	CoastMapper coastMapper(mesh);
 	Coastlines coastlines;
 	std::vector<Vector3> smooth;
 	coastMapper.findCoasts(coastlines, [&coastMapper, &smooth](int offset, std::vector<std::pair<int, int>> &out) {
@@ -320,16 +306,17 @@ void motu::smoothCoastlines(const MeshEdgeMap &mep, Mesh &mesh) {
 	}
 }
 
-void motu::formBeaches(const MeshEdgeMap &mep, Mesh &mesh) {
+void motu::formBeaches(Mesh &mesh) {
 	Coastlines coastlines;
-	CoastMapper coastMapper(mep, mesh);
+	CoastMapper coastMapper(mesh);
 	coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &section) {
 		coastMapper.followCoastWithSeaCount(offset, section);
 	});
+	const MeshEdgeMap &mep = mesh.edgeMap();
 	for (const auto &i : coastlines) {
 		for (const auto &j : *i) {
 			if (j.second < 0) {
-				float z = smooth(mep, mesh, j.first);
+				float z = smooth(mesh, j.first);
 				mesh.vertices[j.first].z = z;
 				for (auto v = mep.vertex(j.first); v.first != v.second; ++v.first) {
 					int offset = *v.first;
@@ -337,7 +324,78 @@ void motu::formBeaches(const MeshEdgeMap &mep, Mesh &mesh) {
 						mesh.vertices[offset].z = z;
 					}
 				}
-				mesh.vertices[j.first].z = smooth(mep, mesh, j.first);
+				mesh.vertices[j.first].z = smooth(mesh, j.first);
+			}
+		}
+	}
+}
+
+void motu::placeCoastalRocks(std::default_random_engine &rd, Mesh &mesh, Decoration &decoration) {
+	const MeshEdgeMap &mep = mesh.edgeMap();
+	Coastlines coastlines;
+	CoastMapper coastMapper(mesh);
+	std::unordered_set<int> rocked;
+	std::uniform_real_distribution<float> full(0.0f, 1.0f);
+	std::uniform_real_distribution<float> half(0.5f, 1.0f);
+	std::uniform_real_distribution<float> quarter(0.25f, 0.5f);
+	std::uniform_real_distribution<float> eigth(0.125f, 0.25f);
+	coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &section) {
+		coastMapper.followCoastWithSeaCount(offset, section);
+	});
+	for (const auto &i : coastlines) {
+		for (const auto &j : *i) {
+			if (j.second > 0) {
+				if (full(rd) < GetRockChance(mesh, j.first)) {
+					decoration.bigRocks.push_back(mesh.vertices[j.first].asVector2());
+					rocked.insert(j.first);
+				}
+			}
+		}
+	}
+	for (const auto &i : coastlines) {
+		for (const auto &j : *i) {
+			if (j.second > 0) {
+				const Vector2 &middle = mesh.vertices[j.first].asVector2();
+				auto neighbours = mep.vertex(j.first);
+				while (neighbours.first != neighbours.second) {
+					int offset = *neighbours.first++;
+					const Vector2 &neighbour = mesh.vertices[offset].asVector2();
+					if (rocked.find(offset) == rocked.end()) {
+						if (full(rd) > GetRockChance(mesh, offset)) {
+							continue;
+						}
+						Vector2 shift = neighbour - middle;
+						if (!coastMapper.onCoast(offset) && mesh.vertices[offset].z > 0.0f) {
+							shift *= half(rd);
+							decoration.bigRocks.push_back(middle + shift);
+						}
+						else {
+							shift *= quarter(rd);
+							decoration.mediumRocks.push_back(middle + shift);
+						}
+						rocked.insert(offset);
+					}
+				}
+			}
+		}
+	}
+	for (const auto &i : coastlines) {
+		for (const auto &j : *i) {
+			if (j.second > 0) {
+				auto neighbours = mep.vertex(j.first);
+				while (neighbours.first != neighbours.second) {
+					int offset = *neighbours.first++;
+					const Vector2 &neighbour = mesh.vertices[offset].asVector2();
+					auto neighboursNeighbours = mep.vertex(offset);
+					while (neighboursNeighbours.first != neighboursNeighbours.second) {
+						offset = *neighboursNeighbours.first++;
+						if (rocked.find(offset) == rocked.end()) {
+							const Vector2 &pos = mesh.vertices[offset].asVector2();
+							decoration.smallRocks.push_back(neighbour + ((pos - neighbour) * eigth(rd)));
+							rocked.insert(offset);
+						}
+					}
+				}
 			}
 		}
 	}

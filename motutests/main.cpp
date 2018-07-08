@@ -29,6 +29,8 @@
 #include "height_map.h"
 #include "matrix4.h"
 #include "unity.h"
+#include "dalauney.h"
+#include "graph.h"
 
 using namespace motu;
 using namespace std;
@@ -157,7 +159,20 @@ inline float byteToFloat(uint32_t val, uint32_t shift) {
 	return (static_cast<float>((val & mask) >> shift) - 127.5f) * mul;
 }
 
-/*TEST_CASE("Continent", "Continent"){
+/*TEST_CASE("Voronoi", "Voronoi") {
+	static int numVerts = 1024;
+	Mesh mesh;
+	std::vector<Vector3> verts(numVerts, Vector3::zero());
+	for (int i = 0; i != numVerts; ++i) {
+		*reinterpret_cast<Vector2*>(verts.data() + i) = randomVector2();
+	}
+	createDalauneyMesh(verts, mesh);
+	Graph<Vector3> graph;
+	GraphBuilder<Vector3> gb(graph);
+
+}*/
+
+TEST_CASE("Continent", "Continent"){
     random_device rd;
     default_random_engine rand(rd());
 	Island::Options options;
@@ -200,9 +215,9 @@ inline float byteToFloat(uint32_t val, uint32_t shift) {
     }
     //std::copy(raw, raw + rasterLength, std::back_inserter(buffer));
     writePNG("/Users/jerome/test.png", buffer, 2048, 2048);
-}*/
+}
 
-TEST_CASE("unity", "unity") {
+/*TEST_CASE("unity", "unity") {
 	MotuOptions options;
 	options.coastalSlopeMultiplier = 1.0f;
 	options.erosianPasses = 16;
@@ -214,14 +229,25 @@ TEST_CASE("unity", "unity") {
 	options.slopeMultiplier = 1.1f;
 	options.waterRatio = 0.4f;
 	void *handle = CreateMotu(666, &options);
-	ExportHeightMap *ehm = CreateHeightMap(handle, 1024);
+	ExportHeightMapWithSeaLevel *ehm = CreateHeightMap(handle, 4096);
+	ExportHeightMap *soil = CreateSoilRichnessMap(handle, 4096);
+	std::vector<uint8_t> buffer;
+	buffer.reserve(1024 * 1024 * 3.0f);
+	for (const float *i = soil->data, *j = soil->data + 4096 * 4096; i != j; ++i) {
+		uint32_t gun = static_cast<uint32_t>(*i * 254.0f);
+		buffer.push_back(gun);
+		buffer.push_back(gun);
+		buffer.push_back(gun);
+	}
+	writePNG("/Users/jerome/test.png", buffer, 4096, 4096);
+	ReleaseSoilRichnessMap(soil);
 	ExportQuantisedRiverArray uvs;
 	CreateQuantisedRiverMeshes(handle, ehm, &uvs);
 	std::cout << uvs.length << std::endl;
 	ReleaseQuantisedRiverMeshes(&uvs);
 	ReleaseHeightMap(ehm);
 	ReleaseMotu(handle);
-}
+}*/
 
 
 /*TEST_CASE("makepolygon", "makepolygon") {

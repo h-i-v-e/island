@@ -1,6 +1,9 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include <cfloat>
+#include <cstdint>
+
 #define HASH_PRIME_A 1610612741
 #define HASH_PRIME_B 805306457
 #define HASH_PRIME_C 402653189

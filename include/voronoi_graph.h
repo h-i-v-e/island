@@ -50,6 +50,35 @@ namespace motu{
             }
             mExternalFace = builder.bind();
         }
+
+		void generate(const Mesh &mesh) {
+			mHalfEdges.drain();
+			mFaces.drain();
+			mVertices.drain();
+			std::vector<Vector2> vertexBuffer;
+			VertexMap<Vector2, HalfEdges, Vertices, Faces> builder(&mHalfEdges, &mVertices, &mFaces);
+			size_t numTris = mesh.triangles.size() / 3;
+			std::vector<Vector2> centres(numTris);
+			for (size_t i = 0; i != numTris; ++i) {
+				size_t base = i * 3;
+				centres[i] = Triangle(
+					mesh.vertices[mesh.triangles[base]].asVector2(),
+					mesh.vertices[mesh.triangles[base + 1]].asVector2(),
+					mesh.vertices[mesh.triangles[base + 2]].asVector2()
+				).findCircumcircleCentre();
+			}
+			const MeshTriangleMap &tris = mesh.triangleMap();
+			for (size_t i = 0; i != mesh.vertices.size(); ++i) {
+				auto j = tris.vertex(i);
+				while (j.first != j.second) {
+					int offset = *j.first++;
+					vertexBuffer.push_back(centres[offset / 3]);
+				}
+				builder.addPolygon(vertexBuffer.begin(), vertexBuffer.end());
+				vertexBuffer.clear();
+			}
+			mExternalFace = builder.bind();
+		}
         
         const HalfEdges &halfEdges() const{
             return mHalfEdges;

@@ -3,29 +3,33 @@
 
 #include <vector>
 #include <memory>
+#include <random>
 
 namespace motu {
 
 	struct Mesh;
+	struct Decoration;
 	class MeshEdgeMap;
 
 	typedef std::vector<std::unique_ptr<std::vector<std::pair<int, int>>>> Coastlines;
 
 	void applySeaErosian(Mesh &mesh, float strength);
 
-	void applySeaErosian(const MeshEdgeMap &, Mesh &mesh, float strength);
+	void applySeaErosian(Mesh &mesh, float strength);
 
 	void improveCliffs(Mesh &mesh);
 
-	void improveCliffs(const MeshEdgeMap &, Mesh &mesh);
+	void improveCliffs(Mesh &mesh);
 
-	void mapCoastlines(const MeshEdgeMap &, const Mesh &, Coastlines &);
+	void mapCoastlines(const Mesh &, Coastlines &);
 
-	void smoothCoastlines(const MeshEdgeMap &, Mesh &);
+	void smoothCoastlines(Mesh &);
 
-	void eatCoastlines(const MeshEdgeMap &, Mesh &);
+	void eatCoastlines(Mesh &);
 
-	void formBeaches(const MeshEdgeMap &, Mesh &);
+	void formBeaches(Mesh &);
+
+	void placeCoastalRocks(std::default_random_engine &, Mesh &, Decoration &decoration);
 }
 
 #endif

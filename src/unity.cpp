@@ -13,6 +13,11 @@
 using namespace motu;
 
 namespace {
+	void ExportVector2Vector(const std::vector<Vector2> &vec, Vector2ExportArray &exp) {
+		exp.data = reinterpret_cast<const Vector2Export*>(vec.data());
+		exp.length = vec.size();
+	}
+
 	void ExportAMesh(ExportMesh &exp, Mesh *mesh) {
 		exp.handle = mesh;
 		if (!mesh) {
@@ -63,20 +68,20 @@ void ReleaseMesh(ExportMesh *exp) {
 	et->albedo = island->albedoMap().data();
 }*/
 
-ExportHeightMap *CreateHeightMap(void *motu, int resolution) {
+ExportHeightMapWithSeaLevel *CreateHeightMap(void *motu, int resolution) {
 	Island *island = reinterpret_cast<Island*>(motu);
 	Mesh mesh;
 	island->lod(0).slice(BoundingBox(Vector3(0.0f, 0.0f, -0.02f), Vector3(1.0f, 1.0f, 1.0f)), mesh);
 	HeightMap *hm = new HeightMap(resolution, resolution);
 	hm->load(mesh);
-	for (int i = 0; i != 16; ++i) {
+	for (int i = 0; i != 4; ++i) {
 		hm->smooth();
 	}
-	return reinterpret_cast<ExportHeightMap*>(hm);
+	return reinterpret_cast<ExportHeightMapWithSeaLevel*>(hm);
 }
 
-void ReleaseHeightMap(ExportHeightMap *map) {
-	delete reinterpret_cast<Grid<float>*>(map);
+void ReleaseHeightMap(ExportHeightMapWithSeaLevel *map) {
+	delete reinterpret_cast<HeightMap*>(map);
 }
 
 void CreateRiverMeshes(void *motu, ExportMeshArray *ema) {
@@ -123,7 +128,7 @@ void ReleaseRiverMeshes(ExportMeshArray *ema) {
 	delete[] nodes->rivers;
 }*/
 
-void CreateQuantisedRiverMeshes(void *motu, ExportHeightMap *ehm, ExportQuantisedRiverArray *exp) {
+void CreateQuantisedRiverMeshes(void *motu, ExportHeightMapWithSeaLevel *ehm, ExportQuantisedRiverArray *exp) {
 	const Island *island = reinterpret_cast<Island*>(motu);
 	HeightMap *hm = reinterpret_cast<HeightMap*>(ehm);
 	size_t len = island->riverVertexLists().size();
@@ -153,7 +158,7 @@ void CreateQuantisedRiverMeshes(void *motu, ExportHeightMap *ehm, ExportQuantise
 		QuantisedRiver *river = buffer[i];
 		if (river->size() > 2) {
 			MeshWithUV *mesh = new MeshWithUV;
-			createQuantisedRiverMesh(*hm, *river, *mesh, hm->seaLevel(), mf);
+			createQuantisedRiverMesh(*hm, *river, *mesh, mf);
 			meshes.push_back(mesh);
 		}
 		else {
@@ -195,4 +200,25 @@ void ReleaseQuantisedRiverMeshes(ExportQuantisedRiverArray *exp) {
 		delete[] i->quantisedRiverNodes;
 	}
 	delete[] exp->data;
+}
+
+void GetDecoration(void *motu, ExportDecoration *exp) {
+	const Island *island = reinterpret_cast<Island*>(motu);
+	const Decoration &decoration = island->decoration();
+	ExportVector2Vector(decoration.trees, exp->trees);
+	ExportVector2Vector(decoration.bushes, exp->bushes);
+	ExportVector2Vector(decoration.bigRocks, exp->bigRocks);
+	ExportVector2Vector(decoration.mediumRocks, exp->mediumRocks);
+	ExportVector2Vector(decoration.smallRocks, exp->smallRocks);
+}
+
+ExportHeightMap* CreateSoilRichnessMap(void *motu, int resolution) {
+	const Island *island = reinterpret_cast<Island*>(motu);
+	Grid<float> *grid = new Grid<float>(resolution, resolution);
+	island->soilRichness().rasterize(*grid);
+	return reinterpret_cast<ExportHeightMap*>(grid);
+}
+
+void ReleaseSoilRichnessMap(ExportHeightMap *ehm) {
+	delete reinterpret_cast<Grid<float>*>(ehm);
 }

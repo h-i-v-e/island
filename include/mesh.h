@@ -12,9 +12,12 @@
 #include <vector>
 #include <set>
 #include <unordered_set>
+#include <memory>
 
 #include "grid.h"
 #include "triangle3.h"
+#include "mesh_edge_map.h"
+#include "mesh_triangle_map.h"
 
 namespace motu{
 	struct BoundingBox;
@@ -79,6 +82,8 @@ namespace motu{
 
 		void smooth();
 
+		void smoothIfPositiveZ();
+
 		void rasterize(Grid<VertexAndNormal> &) const;
 
 		void rasterize(Grid<Vector3> &) const;
@@ -116,6 +121,10 @@ namespace motu{
 
 		Mesh &tesselate();
 
+		//indices are the same a original triangles and values are offsets
+		//into tesselated vertices
+		void tesselateAndMapCentroids(std::vector<int> &centroids, Mesh &tesselated);
+
 		BoundingBox &getMaxSquare(BoundingBox &out) const;
 
 		Mesh &transform(const Matrix4 &);
@@ -132,6 +141,36 @@ namespace motu{
 			}
 			return vmap.bind();
 		}
+
+		const MeshEdgeMap &edgeMap() const{
+			if (!mEdgeMap.get()) {
+				mEdgeMap = std::shared_ptr<MeshEdgeMap>(new MeshEdgeMap(*this));
+			}
+			return *mEdgeMap;
+		}
+
+		const MeshTriangleMap &triangleMap() const {
+			if (!mTriangleMap.get()) {
+				mTriangleMap = std::shared_ptr<MeshTriangleMap>(new MeshTriangleMap(*this));
+			}
+			return *mTriangleMap;
+		}
+
+		void ensureNormals() {
+			if (normals.size() != vertices.size()) {
+				calculateNormals();
+			}
+		}
+
+		void dirty() {
+			mEdgeMap = nullptr;
+			mTriangleMap = nullptr;
+			normals.clear();
+		}
+
+		private:
+			mutable std::shared_ptr<MeshEdgeMap> mEdgeMap;
+			mutable std::shared_ptr<MeshTriangleMap> mTriangleMap;
     };
 
 	struct MeshWithUV : public Mesh{

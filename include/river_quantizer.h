@@ -16,9 +16,9 @@ namespace motu {
 	QuantisedRiver &quantiseRiver(const Grid<float> &, const Island::VertexList &, QuantisedRiver &);
 
 	//rivers are deduped and the rivers they join are mapped with the same offsets in flowIntos
-	void dedupeQuantisedRivers(const HeightMap &grid, std::vector<QuantisedRiver*> &rivers, std::vector<int> &flowIntos);
+	void dedupeQuantisedRivers(HeightMap &grid, std::vector<QuantisedRiver*> &rivers, std::vector<int> &flowIntos);
 
-	MeshWithUV &createQuantisedRiverMesh(HeightMap &, const QuantisedRiver &, MeshWithUV &mesh, float seaLevel, float maxFlow);
+	MeshWithUV &createQuantisedRiverMesh(HeightMap &, const QuantisedRiver &, MeshWithUV &mesh, float maxFlow);
 
 	void joinQuantisedRiverMeshes(HeightMap &, MeshWithUV &from, MeshWithUV &to);
 }

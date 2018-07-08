@@ -71,7 +71,7 @@ extern "C" {
 		int length;
 	};
 
-	struct ExportMeshArray{
+	struct ExportMeshArray {
 		ExportMesh *data;
 		int length;
 	};
@@ -84,6 +84,11 @@ extern "C" {
 	struct ExportHeightMap {
 		int width, height;
 		float* data;
+	};
+
+	struct ExportHeightMapWithSeaLevel {
+		int width, height;
+		float* data;
 		float seaLevel;
 	};
 
@@ -92,7 +97,13 @@ extern "C" {
 		int length;
 	};
 
+	struct ExportDecoration {
+		Vector2ExportArray trees, bushes, bigRocks, mediumRocks, smallRocks;
+	};
+
 	EXPORT_TO_UNITY void *CreateMotu(int seed, const MotuOptions *);
+
+	EXPORT_TO_UNITY void GetDecoration(void *, ExportDecoration *);
 
 	//EXPORT_TO_UNITY void FetchTextures(void *, ExportTextures *);
 
@@ -100,9 +111,9 @@ extern "C" {
 
 	EXPORT_TO_UNITY void CreateMesh(void *, const ExportArea *, int lod, uint8_t clampSides, ExportMesh *);
 
-	EXPORT_TO_UNITY ExportHeightMap* CreateHeightMap(void *, int resolution);
+	EXPORT_TO_UNITY ExportHeightMapWithSeaLevel* CreateHeightMap(void *, int resolution);
 
-	EXPORT_TO_UNITY void ReleaseHeightMap(ExportHeightMap *);
+	EXPORT_TO_UNITY void ReleaseHeightMap(ExportHeightMapWithSeaLevel *);
 
 	EXPORT_TO_UNITY void ReleaseMesh(ExportMesh *);
 
@@ -114,9 +125,13 @@ extern "C" {
 
 	EXPORT_TO_UNITY void ReleaseRiverNodes(ExportRiverNodes *);*/
 
-	EXPORT_TO_UNITY void CreateQuantisedRiverMeshes(void *, ExportHeightMap *, ExportQuantisedRiverArray *);
+	EXPORT_TO_UNITY void CreateQuantisedRiverMeshes(void *, ExportHeightMapWithSeaLevel *, ExportQuantisedRiverArray *);
 
 	EXPORT_TO_UNITY void ReleaseQuantisedRiverMeshes(ExportQuantisedRiverArray *);
+
+	EXPORT_TO_UNITY ExportHeightMap* CreateSoilRichnessMap(void *, int resolution);
+
+	EXPORT_TO_UNITY void ReleaseSoilRichnessMap(ExportHeightMap *);
 }
 
 #endif

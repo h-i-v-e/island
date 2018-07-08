@@ -101,11 +101,15 @@ void HeightMap::smooth() {
 	Grid<float> buffer(width(), height());
 	for (int y = 1, hLast = height() - 1, xLast = width() - 1; y < hLast; ++y) {
 		for (int x = 1; x < xLast; ++x) {
-			float total = operator()(x - 1, y - 1) * diagWeight;
+			float total = operator()(x, y);
+			if (total <= mSeaLevel) {
+				buffer(x, y) = total;
+				continue;
+			}
+			total += operator()(x - 1, y - 1) * diagWeight;
 			total += operator()(x, y - 1);
 			total += operator()(x + 1, y - 1) * diagWeight;
 			total += operator()(x - 1, y);
-			total += operator()(x, y);
 			total += operator()(x + 1, y);
 			total += operator()(x - 1, y + 1) * diagWeight;
 			total += operator()(x, y + 1);

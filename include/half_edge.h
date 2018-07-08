@@ -14,6 +14,8 @@
 #include <map>
 #include "optional.h"
 #include <iostream>
+#include <unordered_map>
+#include "util.h"
 
 namespace motu{
     
@@ -442,7 +444,7 @@ namespace motu{
         typedef typename EdgeAllocator::ObjectType HalfEdge;
         typedef typename HalfEdge::Vertex Vertex;
         typedef typename HalfEdge::Face Face;
-        typedef std::map<VectorType, Vertex *> Map;
+        typedef std::unordered_map<VectorType, Vertex *, Hasher<VectorType>> Map;
         typedef std::multimap<Vertex *, HalfEdge *> Fans;
         
         Map map;
@@ -470,7 +472,7 @@ namespace motu{
                     continue;
                 }
                 for (auto j = from; j != to; ++j){
-                    if ((!j->second->pair) && &j->second->next->vertex() == &last->vertex()){
+                    if ((!j->second->pair) && j->second->next->mVertex == last->mVertex){
                         j->second->pair = last;
                         last->pair = j->second;
                         break;
@@ -487,7 +489,7 @@ namespace motu{
                     externalEdges.emplace_back(&*i);
                 }
             }
-            std::cout << externalEdges.size() << " external edges" << std::endl;
+            std::cout << externalEdges.size() << " of " << edgeAllocator->size() << " external edges" << std::endl;
             std::multimap<VectorType, HalfEdge *> outsideEdges;
             for (auto i = externalEdges.begin(); i != externalEdges.end(); ++i){
                 (*i)->pair = edgeAllocator->allocate();

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <unordered_set>
+#include <unordered_map>
 #include <queue>
 
 #include "island.h"
@@ -19,6 +20,7 @@
 #include "raster.h"
 #include "sea_erosian.h"
 #include "lake.h"
+#include "face_erosian.h"
 
 using namespace motu;
 
@@ -123,6 +125,11 @@ namespace {
 	void setZValues(std::vector<Vector3> &vertices, const std::vector<float> &distanceToSea, const std::vector<float> &distanceToLand, float maxDistance, float maxZ) {
 		float mul = maxZ / maxDistance;
 		for (int i = 0; i != vertices.size(); ++i) {
+			/*float z = distanceToSea[i] - distanceToLand[i];
+			if (z < 0.0f) {
+				z -= 10.0f;
+			}
+			vertices[i].z = z * mul;*/
 			vertices[i].z = (distanceToSea[i] - distanceToLand[i]) * mul;
 		}
 	}
@@ -294,65 +301,36 @@ namespace {
 		}
 	}
 
-	Rivers *erode(std::default_random_engine &rd, Mesh &mesh, const Island::Options &options, Lake::Lakes &lakes) {
+	Rivers *erode(std::default_random_engine &rd, Mesh &mesh, float maxHeight, const Island::Options &options) {
 		MeshEdgeMap mep(mesh);
-		applyHydrolicErosian(rd, mesh, mep, options.erosianPasses);
-		applySeaErosian(mep, mesh, 0.0001f);
-		//applySeaErosian(mep, mesh);
-		//Lake::findLakes(mesh, mep, lakes);
-		Rivers *rivers = new Rivers(mesh, mep, lakes, options.riverDepth, 0.0f);
-		rivers->smooth(mesh, mep);
-		rivers->carveInto(mesh, mep, options.maxRiverGradient * 32.0f);
-		//Lake::carveInto(mesh, lakes);
+		applyHydrolicErosian(mesh, options.erosianPasses);
+		Rivers *rivers = new Rivers(mesh, maxHeight, 0.0f);
+		rivers->smooth(mesh);
+		rivers->carveInto(mesh, options.maxRiverGradient * 32.0f);
 		return rivers;
 	}
-
-	void erode(std::default_random_engine &rd, Rivers **river, const Mesh &old, Mesh &nw, const Island::Options &options, Lake::Lakes &lakes) {
-		MeshEdgeMap mep(nw);
-		/*lakes.clear();
-		Lake::findLakes(nw, mep, lakes);*/
-		//Rivers temp(**river, old, nw, mep, lakes);
+	
+	template <class Apply>
+	void erode(std::default_random_engine &rd, Rivers **river/*, const Mesh &old*/, Mesh &nw, float maxHeight, const Island::Options &options, float sd, Apply apply) {
 		addNoise(nw, rd, 32.0f, options.noiseMultiplier);
 		addNoise(nw, rd, 64.0f, options.noiseMultiplier * 0.5f);
-		applyHydrolicErosian(rd, nw, mep, options.erosianPasses);
+		apply(nw, options.erosianPasses);
 		addNoise(nw, rd, 64.0f, options.noiseMultiplier * 0.25f);
 		addNoise(nw, rd, 128.0f, options.noiseMultiplier * 0.125f);
-		//improveCliffs(mep, nw);
-		/*lakes.clear();
-		Lake::findLakes(nw, mep, lakes);*/
-		//Rivers *rivers = new Rivers(**river, old, nw, mep, lakes);
-		lakes.clear();
-		Rivers *rivers = new Rivers(nw, mep, lakes, options.riverDepth, 2.0f);
-		rivers->smooth(nw, mep);
-		//applySeaErosian(mep, nw, 0.0001f);
-		rivers->carveInto(nw, mep, options.maxRiverGradient * 8.0f);
-		//Lake::carveInto(nw, lakes);
+		Rivers *rivers = new Rivers(nw, maxHeight, sd);
+		rivers->smooth(nw);
+		rivers->carveInto(nw, options.maxRiverGradient * 8.0f);
 		delete *river;
 		*river = rivers;
-		/*for (int i = 0; i != 3; ++i) {
-			eatCoastlines(mep, nw);
-		}
-		improveCliffs(mep, nw);
-		formBeaches(mep, nw);*/
-		//applySeaErosian(mep, nw, 0.0001f);
 	}
 
-	void finalRiverPass(Rivers **rivers, Mesh &mesh, Lake::Lakes &lakes, const Island::Options &options) {
+	void finalRiverPass(Rivers **rivers, Mesh &mesh, float maxHeight, const Island::Options &options) {
 		delete *rivers;
-		//lakes.clear();
 		MeshEdgeMap mep(mesh);
-		*rivers = new Rivers(mesh, mep, lakes, options.riverDepth, 50.0f * options.maxZ);
-		(*rivers)->smooth(mesh, mep);
-		(*rivers)->carveInto(mesh, mep, options.maxRiverGradient);
-		//Lake::carveInto(mesh, lakes);
+		*rivers = new Rivers(mesh, maxHeight, 32.0f);
+		(*rivers)->smooth(mesh);
+		(*rivers)->carveInto(mesh, options.maxRiverGradient);
 	}
-
-	/*void seaErode(Mesh &mesh, int passes) {
-		MeshEdgeMap mep(mesh);
-		applySeaErosian(mep, mesh, 0.00000002f);
-		//finalRiverPass(&rivers, lods[0], mLakes, options);
-		improveCliffs(mep, mesh);
-	}*/
 
 	void createRiverMeshes(const Rivers &rivers, const Mesh &mesh, Island::RiverMeshes &meshes) {
 		meshes.reserve(rivers.riverList().size());
@@ -360,7 +338,7 @@ namespace {
 		BoundingBox bounds(0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
 		for (const auto &i : rivers.riverList()) {
 			buffer.clear();
-			rivers.getMesh(*i, mesh, MeshTriangleMap(mesh), buffer);
+			rivers.getMesh(*i, mesh, buffer);
 			if (buffer.vertices.empty()) {
 				continue;
 			}
@@ -372,17 +350,63 @@ namespace {
 		}
 	}
 
+	struct GetShifted {
+		std::unordered_map<Vector3, Vector3, Hasher<Vector3>> shiftMap;
+
+		const Vector3 &operator()(const Vector3 &old, const Vector3 &nw) {
+			auto i = shiftMap.find(old);
+			if (i == shiftMap.end()) {
+				shiftMap.emplace_hint(i, old, nw);
+				return nw;
+			}
+			return i->second;
+		}
+	};
+
+	void smoothRiverLists(Island::RiverVertexLists &lists) {
+		GetShifted getShifted;
+		for (auto &riv : lists) {
+			//riv->reserve(riv->size() << 1);
+			std::vector<Island::RiverVertex> buffer;
+			buffer.reserve(riv->size() << 1);
+			buffer.push_back(riv->front());
+			for (size_t i = 1; i < riv->size(); ++i) {
+				buffer.emplace_back(((*riv)[i - 1].vertex + (*riv)[i].vertex) * 0.5f, (*riv)[i - 1].flow);
+				buffer.push_back((*riv)[i]);
+			}
+			riv->clear();
+			static float third = 1.0f / 3.0f;
+			riv->emplace_back(getShifted(buffer.front().vertex, buffer.front().vertex), buffer.front().flow);
+			for (size_t i = 1, j = buffer.size() - 1; i < j; ++i) {
+				riv->emplace_back(
+					getShifted(
+						buffer[i].vertex,
+						(buffer[i - 1].vertex + buffer[i].vertex + buffer[i + 1].vertex) * third
+					),
+					buffer[i].flow
+				);
+			}
+			riv->emplace_back(getShifted(buffer.back().vertex, buffer.back().vertex), buffer.back().flow);
+		}
+	}
+
 	void createRiverLists(const Mesh &mesh, const Rivers &rivers, Island::RiverVertexLists &lists) {
 		int len = rivers.riverList().size();
 		lists.reserve(len);
+		std::unordered_set<int> used;
 		for (int i = 0; i != len; ++i) {
+			used.clear();
 			auto list = std::make_shared<Island::VertexList>();
-			list->reserve(rivers.riverList()[i]->vertices.size());
+			list->reserve(rivers.riverList()[i]->vertices.size() << 1);
 			for (const auto &j : rivers.riverList()[i]->vertices) {
-				list->emplace_back(mesh.vertices[j.index], j.flow);
+				if (used.find(j.index) == used.end()) {
+					list->emplace_back(mesh.vertices[j.index], j.flow);
+					used.insert(j.index);
+				}
 			}
 			lists.push_back(list);
 		}
+		smoothRiverLists(lists);
 	}
 
 	void lowerMesh(Mesh &mesh, float amount) {
@@ -426,39 +450,46 @@ void Island::generateTopology(std::default_random_engine &rd, const Options &opt
 	}
 	maxHeight = generateSeas(preSlice[2], rd, maxZ, options);
 	preSlice[2].tesselate();
-	//lods[2].smooth();
-	Rivers *rivers = erode(rd, preSlice[2], options, mLakes);
+	preSlice[2].dirty();
+	Rivers *rivers = erode(rd, preSlice[2], maxZ, options);
 	preSlice[1] = preSlice[2];
+	preSlice[1].dirty();
 	preSlice[1].tesselate();
-	erode(rd, &rivers, preSlice[2], preSlice[1], options, mLakes);
-	//createRiverMeshes(*rivers, preSlice[1], mRiverMeshes);
+	erode(rd, &rivers/*, preSlice[2]*/, preSlice[1], maxZ, options, 2, [](Mesh &nw, int erosianPasses) {
+		applyHydrolicErosian(nw, erosianPasses);
+	});
 	preSlice[0] = preSlice[1];
-	preSlice[0].tesselate()/*.tesselate().smooth()*/;
-
-	//formBeaches(mep, preSlice[0]);
-	finalRiverPass(&rivers, preSlice[0], Lake::Lakes(), options);
+	preSlice[0].tesselate();
+	//faceErode(preSlice[0]);
+	preSlice[0].dirty();
+	for (int i = 0; i != 8; ++i) {
+		eatCoastlines(preSlice[0]);
+	}
+	lowerMesh(preSlice[0], maxZ * 0.01f);
+	improveCliffs(preSlice[0]);
+	formBeaches(preSlice[0]);
+	preSlice[0].normals.clear();
+	std::vector<float> richness;
+	erode(rd, &rivers/*, preSlice[1]*/, preSlice[0], maxZ, options, 8, [&richness, &rd, this](Mesh &nw, int erosianPasses) {
+		applyHydrolicErosian(rd, nw, erosianPasses, richness, mDecoration);
+	});
+	mSoilRichness = preSlice[0];
+	for (size_t i = 0; i != richness.size(); ++i) {
+		mSoilRichness.vertices[i].z = richness[i];
+	}
+	preSlice[0].tesselate();
+	preSlice[0].dirty();
+	finalRiverPass(&rivers, preSlice[0], maxZ, options);
+	preSlice[0].smoothIfPositiveZ();
+	preSlice[0].normals.clear();
 	createRiverMeshes(*rivers, preSlice[0], mRiverMeshes);
 	createRiverLists(preSlice[0], *rivers, mRiverVertexLists);
-	preSlice[0].tesselate()/*.smooth()*/;
-	MeshEdgeMap mep(preSlice[0]);
-	for (int i = 0; i != 16; ++i) {
-		eatCoastlines(mep, preSlice[0]);
-	}
-	formBeaches(mep, preSlice[0]);
-	preSlice[0].smooth();
-	/*for (int i = 0; i != 3; ++i) {
-		eatCoastlines(mep, preSlice[0]);
-	}*/
-	//smoothCoastlines(mep, preSlice[0]);
-	//improveCliffs(mep, preSlice[0]);
-	//smoothCoastlines(MeshEdgeMap(lods[0]), lods[0]);
-	//improveCliffs(lods[0]);
-	//seaErode(lods[0], options.erosianPasses >> 2);
-	lowerMesh(preSlice[0], maxZ * 0.01f);
 	correctLods(preSlice);
 	for (int i = 0; i != 3; ++i) {
 		preSlice[i].slice(BoundingBox(0.0f, 0.0f, -0.02f, 1.0f, 1.0f, 1.0f), lods[i]);
 	}
 	delete rivers;
+	placeCoastalRocks(rd, lods[1], mDecoration);
+	mDecoration.addRocks(rd, lods[0]);
 	//mRivers = std::unique_ptr<Rivers>(rivers);
 }

@@ -264,10 +264,26 @@ namespace{
 	typedef std::unordered_map<OffsetPair, Flip, OffsetPairHasher> FlipMap;
 	typedef std::vector<Triangle3> Triangles;
 
-	void tesselateTriangle(const Mesh &mesh, int offset, FlipMap &flips, Triangles &out) {
+	struct DoNothingWithBaricentres {
+		void operator()(int offset, const Vector3 &baricentre) const{}
+	};
+
+	struct MapBaricentres {
+		std::vector<Vector3> map;
+
+		MapBaricentres(size_t numTris) : map(numTris) {}
+
+		void operator()(int offset, const Vector3 &baricentre) {
+			map[offset] = baricentre;
+		}
+	};
+	
+	template <class WithBaricentre>
+	void tesselateTriangle(const Mesh &mesh, int offset, FlipMap &flips, Triangles &out, WithBaricentre &withBaricentre) {
 		Triangle3 tri(getTriangle(mesh, offset));
 		Vector3 norm(tri.normal());
 		Vector3 centre(tri.baricentre());
+		withBaricentre(offset, centre);
 		Spline splines[3];
 		tri.getSplines(splines);
 		for (int j = 0; j != 3; ++j) {
@@ -289,6 +305,48 @@ namespace{
 			}
 			else {
 				flips.emplace_hint(k, spline, Flip(centre, norm));
+			}
+		}
+	}
+
+	template <class WithBaricentres>
+	void doTesselate(Mesh &mesh, std::vector<Triangle3> &out, WithBaricentres &withBaricentres) {
+		mesh.ensureNormals();
+		FlipMap flips;
+		flips.reserve(mesh.triangles.size());
+		out.reserve(mesh.triangles.size() * 3);
+		for (int i = 2; i < mesh.triangles.size(); i += 3) {
+			tesselateTriangle(mesh, i - 2, flips, out, withBaricentres);
+		}
+		for (auto i = flips.begin(); i != flips.end(); ++i) {
+			if (i->second.complete) {
+				emplacePreserveRotation(i->second.normal, out, i->second.a, i->second.b, mesh.vertices[i->first.first]);
+				emplacePreserveRotation(i->second.normal, out, i->second.a, i->second.b, mesh.vertices[i->first.second]);
+			}
+			else {
+				emplacePreserveRotation(i->second.normal, out, mesh.vertices[i->first.first], i->second.a, mesh.vertices[i->first.second]);
+			}
+		}
+	}
+
+	void loadMesh(Mesh &mesh, std::vector<Triangle3> &tris, std::unordered_map<Vector3, int, Hasher<Vector3>> &vertexMap) {
+		int numVerts = static_cast<int>(tris.size()) + 2;
+		vertexMap.reserve(numVerts);
+		mesh.triangles.reserve(tris.size());
+		mesh.vertices.reserve(numVerts);
+		for (auto i = tris.begin(); i != tris.end(); ++i) {
+			for (int j = 0; j != 3; ++j) {
+				const Vector3 &vert = i->vertices[j];
+				auto k = vertexMap.find(vert);
+				if (k != vertexMap.end()) {
+					mesh.triangles.push_back(k->second);
+				}
+				else {
+					int pos = static_cast<int>(mesh.vertices.size());
+					mesh.vertices.push_back(vert);
+					mesh.triangles.push_back(pos);
+					vertexMap.emplace(vert, pos);
+				}
 			}
 		}
 	}
@@ -514,48 +572,31 @@ BoundingBox &Mesh::getMaxSquare(BoundingBox &out) const{
 }
 
 Mesh &Mesh::tesselate() {
-	FlipMap flips;
-	flips.reserve(triangles.size());
 	std::vector<Triangle3> out;
-	out.reserve(triangles.size() * 3);
-	for (int i = 2; i < triangles.size(); i += 3) {
-		tesselateTriangle(*this, i - 2, flips, out);
-	}
-	for (auto i = flips.begin(); i != flips.end(); ++i) {
-		if (i->second.complete) {
-			emplacePreserveRotation(i->second.normal, out, i->second.a, i->second.b, vertices[i->first.first]);
-			emplacePreserveRotation(i->second.normal, out, i->second.a, i->second.b, vertices[i->first.second]);
-		}
-		else{
-			emplacePreserveRotation(i->second.normal, out, vertices[i->first.first], i->second.a, vertices[i->first.second]);
-		}
-	}
+	DoNothingWithBaricentres doNothing;
+	doTesselate(*this, out, doNothing);
 	clear();
 	load(out);
 	return *this;
 }
 
+//indices are the same a original triangles and values are offsets
+//into tesselated vertices
+void Mesh::tesselateAndMapCentroids(std::vector<int> &centroids, Mesh &tesselated) {
+	std::vector<Triangle3> out;
+	MapBaricentres mapBaricentres(triangles.size());
+	doTesselate(*this, out, mapBaricentres);
+	std::unordered_map<Vector3, int, Hasher<Vector3>> vertexMap;
+	loadMesh(tesselated, out, vertexMap);
+	centroids.resize(mapBaricentres.map.size());
+	for (int i = 0, j = static_cast<int>(mapBaricentres.map.size()); i != j; ++i) {
+		centroids[i] = vertexMap[mapBaricentres.map[i]];
+	}
+}
+
 void Mesh::load(std::vector<Triangle3> &tris) {
 	std::unordered_map<Vector3, int, Hasher<Vector3>> vertexMap;
-	int numVerts = static_cast<int>(tris.size()) + 2;
-	vertexMap.reserve(numVerts);
-	triangles.reserve(tris.size());
-	vertices.reserve(numVerts);
-	for (auto i = tris.begin(); i != tris.end(); ++i) {
-		for (int j = 0; j != 3; ++j) {
-			const Vector3 &vert = i->vertices[j];
-			auto k = vertexMap.find(vert);
-			if (k != vertexMap.end()) {
-				triangles.push_back(k->second);
-			}
-			else {
-				int pos = static_cast<int>(vertices.size());
-				vertices.push_back(vert);
-				triangles.push_back(pos);
-				vertexMap.emplace(vert, pos);
-			}
-		}
-	}
+	loadMesh(*this, tris, vertexMap);
 }
 
 void Mesh::load(std::vector<Triangle3WithNormals> &tris) {
@@ -584,6 +625,7 @@ void Mesh::load(std::vector<Triangle3WithNormals> &tris) {
 }
 
 void Mesh::calculateNormals() {
+	normals.clear();
 	normals.reserve(vertices.size());
 	MeshTriangleMap triMap(*this);
 	for (int i = 0; i != vertices.size(); ++i) {
@@ -616,6 +658,34 @@ void Mesh::smooth() {
 		}
 		moved[i] = total / count;
 	}
+	normals.clear();
+	std::copy(moved, moved + vertices.size(), vertices.data());
+	delete[] moved;
+}
+
+void Mesh::smoothIfPositiveZ() {
+	MeshEdgeMap edges(*this);
+	PerimeterSet perimeter;
+	getPerimeterSet(perimeter);
+	Vector3 *moved = new Vector3[vertices.size()];
+	for (int i = 0; i != vertices.size(); ++i) {
+		if (perimeter.find(i) != perimeter.end() || vertices[i].z < 0.0f) {
+			moved[i] = vertices[i];
+			continue;
+		}
+		Vector3 total(vertices[i]);
+		std::pair<const int*, const int*> offsets(edges.vertex(i));
+		int count = 1;
+		while (offsets.first != offsets.second) {
+			const Vector3 &vert = vertices[*(offsets.first++)];
+			if (vert.z >= 0.0f) {
+				total += vert;
+				++count;
+			}
+		}
+		moved[i] = total / static_cast<float>(count);
+	}
+	normals.clear();
 	std::copy(moved, moved + vertices.size(), vertices.data());
 	delete[] moved;
 }

@@ -16,6 +16,8 @@ set(sources
 	dalauney.cpp
 	quantize_river.cpp
 	unity.cpp
+	decoration.cpp
+	face_erosian.cpp
 )
 
 add_library(motu SHARED ${sources})

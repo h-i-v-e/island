@@ -11,6 +11,7 @@
 #include "mesh.h"
 #include "lake.h"
 #include "rivers.h"
+#include "decoration.h"
 
 namespace motu {
 
@@ -21,6 +22,8 @@ namespace motu {
 			int flow;
 
 			RiverVertex(const Vector3 &vertex, int flow) : vertex(vertex), flow(flow) {}
+
+			RiverVertex() {}
 		};
 
 		typedef Grid<uint32_t> NormalAndOcclusianMap;
@@ -73,6 +76,14 @@ namespace motu {
 			return mRiverVertexLists;
 		}
 
+		const Decoration &decoration() const{
+			return mDecoration;
+		}
+
+		const Mesh &soilRichness() const {
+			return mSoilRichness;
+		}
+
 	private:
 		float maxZ, maxHeight;
 		Mesh lods[3];
@@ -80,6 +91,8 @@ namespace motu {
 		//std::unique_ptr<Rivers> mRivers;
 		RiverMeshes mRiverMeshes;
 		RiverVertexLists mRiverVertexLists;
+		Decoration mDecoration;
+		Mesh mSoilRichness;
 
 		void generateTopology(std::default_random_engine &, const Options &);
 	};

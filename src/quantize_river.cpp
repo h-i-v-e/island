@@ -17,9 +17,11 @@
 #define RIVER_UV_SCALE 0.25f
 #endif
 #ifndef RIVER_STRETCH
-#define RIVER_STRETCH 2.0f
+#define RIVER_STRETCH 1.0f
 #endif
-
+#ifndef MAX_RIVER_SLOPE
+#define MAX_RIVER_SLOPE 0.35f
+#endif
 
 using namespace motu;
 
@@ -35,7 +37,7 @@ namespace {
 		std::unordered_set<Vector2Int, Hasher<Vector2Int>> included;
 		int lastFlow;
 
-		Setter(QuantisedRiver &out) : out(out){}
+		Setter(QuantisedRiver &out) : out(out) {}
 
 		void operator()(int x, int y) {
 			Vector2Int v2(x, y);
@@ -45,6 +47,52 @@ namespace {
 			}
 		}
 	};
+
+	void carveBack(HeightMap &heightMap, const QuantisedRiver &river, int from, float height){
+		float current = heightMap(river[from].x, river[from].y);
+		float shift = height - current;
+		for (--from; from >= 0; --from) {
+			heightMap(river[from].x, river[from].y) += shift;
+			shift *= 0.75f;
+		}
+	}
+
+	void flattenRiverJoins(HeightMap &heightMap, std::vector<QuantisedRiver*> &rivers, const std::vector<int> &flowIntos) {
+		for (size_t i = 0; i != flowIntos.size(); ++i) {
+			int target = flowIntos[i];
+			if (target == -1) {
+				continue;
+			}
+			const QuantisedRiver &inbound = *rivers[i];
+			if (inbound.size() < 2) {
+				continue;
+			}
+			QuantisedRiver &outbound = *rivers[target];
+			const Vector2Int &join = inbound.back();
+			const Vector2Int &in = inbound[inbound.size() - 2];
+			for (size_t j = 1, k = outbound.size() - 1; j < k; ++j) {
+				if (outbound[j] != join) {
+					continue;
+				}
+				const Vector2Int &up = outbound[j - 1], &down = outbound[j + 1];
+				float lowest = heightMap(in.x, in.y);
+				float z = heightMap(down.x, down.y);
+				if (z < lowest) {
+					lowest = z;
+				}
+				carveBack(heightMap, inbound, inbound.size() - 2, lowest);
+				carveBack(heightMap, outbound, j - 1, lowest);
+				heightMap(join.x, join.y) = lowest;
+				heightMap(in.x, in.y) = lowest;
+				heightMap(up.x, up.y) = lowest;
+				heightMap(down.x, down.y) = lowest;
+				/*while (j != outbound.size()) {
+					outbound[j++].flow += inbound.back().flow;
+				}*/
+				break;
+			}
+		}
+	}
 
 	struct IntTriangle {
 		int vertices[3];
@@ -56,7 +104,7 @@ namespace {
 			std::sort(vertices, vertices + 3);
 		}
 
-		size_t hash() const{
+		size_t hash() const {
 			return ((((vertices[0] * HASH_PRIME_A) + vertices[1]) * HASH_PRIME_B) + vertices[2]) * HASH_PRIME_C;
 		}
 
@@ -69,7 +117,7 @@ namespace {
 			return true;
 		}
 
-		bool operator!=(const IntTriangle &other) const{
+		bool operator!=(const IntTriangle &other) const {
 			for (int i = 0; i != 3; ++i) {
 				if (vertices[i] == other.vertices[i]) {
 					return false;
@@ -425,6 +473,180 @@ namespace {
 		}
 	};
 
+	struct SteepSectionStripper {
+		const HeightMap &hm;
+		float maxSlope;
+		std::unordered_set<Vector2Int, Hasher<Vector2Int>> removed;
+
+		SteepSectionStripper(const HeightMap &hm) :hm(hm), maxSlope(MAX_RIVER_SLOPE / hm.height()) {}
+
+		void erase(QuantisedRiver &river, size_t to) {
+			for (size_t i = 0; i != to; ++i) {
+				removed.emplace(river[i].x, river[i].y);
+			}
+			river.erase(river.begin(), river.begin() + to);
+		}
+
+		void removeIfTooSteep(QuantisedRiver &river) {
+			for (size_t i = river.size() - 1; i > 0; --i) {
+				const QuantisedRiverNode &node = river[i], &next = river[i - 1];
+				if ((hm(next.x, next.y) - hm(node.x, node.y)) > maxSlope) {
+					erase(river, i + 1);
+					return;
+				}
+			}
+		}
+
+		void removeIfGoesUp(QuantisedRiver &river) {
+			if (river.size() < 3) {
+				erase(river, river.size());
+				return;
+			}
+			const Vector2Int &secondToLast = river[river.size() - 2];
+			if (hm(river.back().x, river.back().y) > hm(secondToLast.x, secondToLast.y)) {
+				erase(river, river.size());
+			}
+		}
+
+		void operator()(std::vector<QuantisedRiver*> &rivers, const std::vector<int> &flowIntos) {
+			for (size_t i = 0; i != flowIntos.size(); ++i) {
+				if (flowIntos[i] != -1) {
+					removeIfGoesUp(*rivers[i]);
+				}
+			}
+			float maxSlope = 0.5f / hm.height();
+			for (QuantisedRiver *river : rivers) {
+				if (!river->empty()) {
+					removeIfTooSteep(*river);
+				}
+			}
+			bool removing;
+			do {
+				removing = false;
+				for (size_t i = 0; i != rivers.size(); ++i) {
+					QuantisedRiver &river = *rivers[i];
+					if (flowIntos[i] != -1 && !river.empty()) {
+						if (removed.find(Vector2Int(river.back().x, river.back().y)) != removed.end()) {
+							erase(river, river.size());
+							removing = true;
+						}
+					}
+				}
+			} while (removing);
+		}
+	};
+
+	struct LocalMinimaEnforcer {
+		HeightMap &heights;
+		std::unordered_map<Vector2Int, float, Hasher<Vector2Int>> visited;
+
+		struct Fringe {
+			Vector2Int pos;
+			float dist;
+			float minHeight;
+
+			bool operator<(const Fringe &other) const{
+				return dist < other.dist;
+			}
+
+			Fringe(const Vector2Int &pos, float dist, float minHeight) : pos(pos), dist(dist), minHeight(minHeight) {}
+		};
+
+		std::priority_queue<Fringe> fringe;
+		Vector2Int topLeft, bottomRight;
+
+		LocalMinimaEnforcer(HeightMap &heights) : heights(heights){
+		}
+
+		void clear() {
+			visited.clear();
+		}
+
+		void setBounds(const Vector2Int &pos) {
+			topLeft.x = pos.x == 0 ? 0 : pos.x - 1;
+			topLeft.y = pos.y == 0 ? 0 : pos.y - 1;
+			bottomRight.x = pos.x + 1;
+			if (bottomRight.x == heights.width()) {
+				--bottomRight.x;
+			}
+			bottomRight.y = pos.y + 1;
+			if (bottomRight.y == heights.width()) {
+				--bottomRight.y;
+			}
+		}
+
+		void addNeighbours(const Vector2Int &pos, float minHeight, float dist) {
+			static float diagDist = sqrtf(2.0f);
+			setBounds(pos);
+			for (int y = topLeft.y; y <= bottomRight.y; ++y) {
+				for (int x = topLeft.x; x <= bottomRight.x; ++x) {
+					if ((x == pos.x && y == pos.y) || (heights(x, y) < heights.seaLevel())){
+						continue;
+					}
+					float cost = x != pos.x && y != pos.y ? diagDist : 1.0f;
+					cost += dist;
+					Vector2Int v2(x, y);
+					auto i = visited.find(v2);
+					if (i != visited.end()/* && i->second <= dist*/) {
+						continue;
+					}
+					fringe.emplace(v2, cost, minHeight);
+					visited.emplace(v2, cost);
+				}
+			}
+		}
+
+		void smooth(const Vector2Int &pos) {
+			Vector2Int topLeft, bottomRight;
+			heights.assignNeighbourBounds(pos.x, pos.y, topLeft, bottomRight);
+			float total = 0.0f, count = 0;
+			for (int y = topLeft.y; y <= bottomRight.y; ++y) {
+				for (int x = topLeft.x; x <= bottomRight.x; ++x) {
+					total += heights(x, y);
+					++count;
+				}
+			}
+			heights(pos.x, pos.y) = total / static_cast<float>(count);
+		}
+
+		void smoothNeighbours(const Vector2Int &pos) {
+			setBounds(pos);
+			for (int y = topLeft.y; y <= bottomRight.y; ++y) {
+				for (int x = topLeft.x; x <= bottomRight.x; ++x) {
+					Vector2Int next(x, y);
+					if (visited.find(next) == visited.end()) {
+						smooth(next);
+					}
+				}
+			}
+		}
+
+		void operator()(const QuantisedRiver &river) {
+			static float maxDist = MAX_RIVER_DEPTH + RIVER_STRETCH * 2.0f + 1.0f;
+			for (const QuantisedRiverNode &node : river) {
+				visited.emplace(Vector2Int(node.x, node.y), 0.0f);
+			}
+			for (const QuantisedRiverNode &node : river) {
+				float minHeight = heights(node.x, node.y);
+				addNeighbours(Vector2Int(node.x, node.y), minHeight, 0.0f);
+			}
+			while (!fringe.empty()) {
+				Fringe cur = fringe.top();
+				fringe.pop();
+				float &height = heights(cur.pos.x, cur.pos.y);
+				if (height < cur.minHeight) {
+					height = cur.minHeight;
+				}
+				if (cur.dist < maxDist) {
+					addNeighbours(cur.pos, cur.minHeight, cur.dist);
+				}
+				else {
+					smoothNeighbours(cur.pos);
+				}
+			}
+		}
+	};
+
 	struct MeshConstructor {
 		std::unordered_map<Vector2Int, int, Hasher<Vector2Int>> added;
 		std::unordered_set<Vector2Int, Hasher<Vector2Int>> ignore, smoothSet;
@@ -435,6 +657,15 @@ namespace {
 		std::unordered_set<IntTriangle, Hasher<IntTriangle>> addedTriangles;
 		HeightMap &grid;
 		float invMaxFlow;
+
+		bool checkForInf() {
+			for (const Vector3 &v3 : vertices) {
+				if (isnan(v3.x) || isnan(v3.y)) {
+					return true;
+				}
+			}
+			return false;
+		}
 
 		MeshConstructor(HeightMap &grid, float maxFlow) : grid(grid), invMaxFlow(MAX_RIVER_DEPTH / maxFlow) {}
 
@@ -489,17 +720,41 @@ namespace {
 		}
 
 		void ensureDownness(const QuantisedRiver& path) {
-			int x = path[0].x, y = path[0].y;
-			float max = grid(x, y);
-			for (size_t i = 1; i < path.size(); ++i) {
+			int lastX = path.front().x, lastY = path.front().y;
+			float min = grid(lastX, lastY);
+			for (size_t i = 1; i != path.size(); ++i) {
 				int x = path[i].x, y = path[i].y;
-				float &z = grid(x, y);
-				if (z > max) {
-					z = max;
+				float *z = &grid(x, y);
+				if (*z > min) {
+					*z = min;
+					Vector2Int topLeft, bottomRight;
+					grid.assignNeighbourBounds(x, y, topLeft, bottomRight);
+					while (topLeft.y <= bottomRight.y) {
+						for (int ix = topLeft.x; ix <= bottomRight.x; ++ix) {
+							if ((ix == x && topLeft.y == y) || (ix == lastX && topLeft.y == lastY)) {
+								continue;
+							}
+							z = &grid(ix, topLeft.y);
+							*z = ((*z * 3.0f) + min) * 0.25f;
+						}
+						++topLeft.y;
+					}
 				}
 				else {
-					max = z;
+					min = *z;
 				}
+				if (lastX != x && lastY != y){
+					z = &grid(lastX, y);
+					if (*z > min) {
+						*z = min;
+					}
+					z = &grid(x, lastY);
+					if (*z > min) {
+						*z = min;
+					}
+				}
+				lastX = x;
+				lastY = y;
 			}
 		}
 
@@ -540,7 +795,7 @@ namespace {
 		}
 
 		void stretchMesh(std::vector<int> verts, float direction) {
-			if (verts.size() < 2) {
+			if (verts.size() < 3) {
 				return;
 			}
 			Vector2 current = vertices[verts[0]].asVector2(), next = vertices[verts[1]].asVector2();
@@ -548,8 +803,11 @@ namespace {
 				Vector2 last = current;
 				current = next;
 				next = vertices[verts[i + 1]].asVector2();
-				Vector2 dir = (last - next).perp().normalized() * direction * RIVER_STRETCH;
-				dir += current;
+				Vector2 dir = last - next;
+				if (dir.sqrMagnitude() < FLT_EPSILON) {
+					continue;
+				}
+				dir = (dir.perp().normalized() * direction * RIVER_STRETCH) + current;
 				vertices[verts[i]].x = dir.x;
 				vertices[verts[i]].y = dir.y;
 			}
@@ -557,7 +815,7 @@ namespace {
 
 		void smooth() {
 			std::vector<Vector3> adjusted(vertices);
-			float third = 1.0f / 3.0f;
+			static float third = 1.0f / 3.0f;
 			int last = leftVerts.size() - 1;
 			for (int i = 1; i < last; ++i) {
 				adjusted[leftVerts[i]] = (vertices[leftVerts[i - 1]] + vertices[leftVerts[i]] + vertices[leftVerts[i + 1]]) * third;
@@ -567,6 +825,9 @@ namespace {
 				adjusted[rightVerts[i]] = (vertices[rightVerts[i - 1]] + vertices[rightVerts[i]] + vertices[rightVerts[i + 1]]) * third;
 			}
 			vertices = adjusted;
+			/*if (checkForInf()) {
+				exit(-1);
+			}*/
 			stretchMesh(leftVerts, 1.0f);
 			stretchMesh(rightVerts, -1.0f);
 		}
@@ -666,7 +927,7 @@ namespace {
 			return (uv[closest.first] * (total - distA) + uv[closest.second] * (total - distB)) / total;
 		}
 
-		MeshWithUV &copyToMesh(MeshWithUV &sliced, float seaLevel) {
+		MeshWithUV &copyToMesh(MeshWithUV &sliced) {
 			MeshWithUV mesh;
 			std::unordered_map<Vector3, int, Hasher<Vector3>> lookup;
 			lookup.reserve(vertices.size());
@@ -691,7 +952,7 @@ namespace {
 			for (int i = 0; i != mesh.vertices.size(); ++i) {
 				mesh.normals.emplace_back(0.0f, 0.0f, 1.0f);
 			}
-			mesh.slice(BoundingBox(0.0f, 0.0f, seaLevel, grid.width(), grid.height(), grid.width()), sliced);
+			mesh.slice(BoundingBox(0.0f, 0.0f, grid.seaLevel(), grid.width(), grid.height(), grid.width()), sliced);
 			sliced.uv.reserve(sliced.vertices.size());
 			for (int i = 0, j = static_cast<int>(sliced.vertices.size()); i != j; ++i) {
 				auto k = lookup.find(sliced.vertices[i]);
@@ -775,8 +1036,8 @@ QuantisedRiver &motu::quantiseRiver(const Grid<float> &grid, const Island::Verte
 	return out;
 }
 
-MeshWithUV &motu::createQuantisedRiverMesh(HeightMap &grid, const QuantisedRiver& path, MeshWithUV &mesh, float seaLevel, float maxFlow) {
-	float depth = 0.2f / static_cast<float>(grid.width());
+MeshWithUV &motu::createQuantisedRiverMesh(HeightMap &grid, const QuantisedRiver& path, MeshWithUV &mesh, float maxFlow) {
+	float depth = 0.35f / static_cast<float>(grid.width());
 	MeshConstructor mc(grid, maxFlow);
 	mc.ensureDownness(path);
 	Vector2 last(path[0].x, path[0].y);
@@ -826,22 +1087,36 @@ MeshWithUV &motu::createQuantisedRiverMesh(HeightMap &grid, const QuantisedRiver
 			min = z;
 		}
 		float carve = /*(1.0f - mc.getSlope(last, current)) * */(breadthf + 1.0f) * depth;
-		mc.vertices[rightIdx].z = (min - carve * 0.25f);
-		mc.vertices[leftIdx].z = (min - carve * 0.25f);
+		mc.vertices[rightIdx].z = (min - carve * 0.35f);
+		mc.vertices[leftIdx].z = (min - carve * 0.35f);
 		if (i != lastOffset && i != 1) {
 			mc.setHeight(current, last, min - carve, breadth - 1);
 		}
 		last = current;
 	}
+	/*if (mc.checkForInf()) {
+		exit(-1);
+	}*/
 	mc.smooth();
+	/*if (mc.checkForInf()) {
+		exit(-1);
+	}*/
 	mc.smoothRiverBed();
+	/*if (mc.checkForInf()) {
+		exit(-1);
+	}*/
 	mc.ensureDownness(path);
-	mc.clampEdges();
-	return mc.copyToMesh(mesh, seaLevel);
+	/*if (mc.checkForInf()) {
+		exit(-1);
+	}*/
+	//mc.clampEdges();
+	return mc.copyToMesh(mesh);
 }
 
-void motu::dedupeQuantisedRivers(const HeightMap &grid, std::vector<QuantisedRiver*> &rivers, std::vector<int> &flowIntos) {
+void motu::dedupeQuantisedRivers(HeightMap &grid, std::vector<QuantisedRiver*> &rivers, std::vector<int> &flowIntos) {
+	LocalMinimaEnforcer enforce(grid);
 	flowIntos.insert(flowIntos.begin(), rivers.size(), -1);
+	SteepSectionStripper stripper(grid);
 	std::sort(rivers.begin(), rivers.end(), [&grid](const QuantisedRiver *a, const QuantisedRiver *b) {
 		Vector2Int va(a->back().x, a->back().y), vb(b->back().x, b->back().y);
 		return grid(va.x, va.y) < grid(vb.x, vb.y);
@@ -855,9 +1130,10 @@ void motu::dedupeQuantisedRivers(const HeightMap &grid, std::vector<QuantisedRiv
 				river->resize(i + 1);
 				if (flowIntos[j] == -1) {
 					flowIntos[j] = k->second;
+
 				}
 				else {
-					//TODO: Big bug causes 3 way joinm, ust sort out properly some day
+					//TODO: Big bug causes 3 way join, must sort out properly some day
 					river->resize(0);
 				}
 				continue;
@@ -865,7 +1141,14 @@ void motu::dedupeQuantisedRivers(const HeightMap &grid, std::vector<QuantisedRiv
 			usedNodes.emplace((*river)[i], j);
 		}
 	}
-
+	stripper(rivers, flowIntos);
+	//flattenRiverJoins(grid, rivers, flowIntos);
+	for (QuantisedRiver *river : rivers) {
+		if (!river->empty()) {
+			enforce.clear();
+			enforce(*river);
+		}
+	}
 }
 
 void motu::joinQuantisedRiverMeshes(HeightMap &hm, MeshWithUV &from, MeshWithUV &to) {
