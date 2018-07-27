@@ -21,6 +21,7 @@
 #include "sea_erosian.h"
 #include "lake.h"
 #include "face_erosian.h"
+#include "object_pool.h"
 
 using namespace motu;
 
@@ -303,7 +304,7 @@ namespace {
 
 	Rivers *erode(std::default_random_engine &rd, Mesh &mesh, float maxHeight, const Island::Options &options) {
 		MeshEdgeMap mep(mesh);
-		applyHydrolicErosian(mesh, options.erosianPasses);
+		applyHydrolicErosian(mesh);
 		Rivers *rivers = new Rivers(mesh, maxHeight, 0.0f);
 		rivers->smooth(mesh);
 		rivers->carveInto(mesh, options.maxRiverGradient * 32.0f);
@@ -311,10 +312,10 @@ namespace {
 	}
 	
 	template <class Apply>
-	void erode(std::default_random_engine &rd, Rivers **river/*, const Mesh &old*/, Mesh &nw, float maxHeight, const Island::Options &options, float sd, Apply apply) {
+	void erode(std::default_random_engine &rd, Rivers **river, Mesh &nw, float maxHeight, const Island::Options &options, float sd, Apply apply) {
 		addNoise(nw, rd, 32.0f, options.noiseMultiplier);
 		addNoise(nw, rd, 64.0f, options.noiseMultiplier * 0.5f);
-		apply(nw, options.erosianPasses);
+		apply(nw);
 		addNoise(nw, rd, 64.0f, options.noiseMultiplier * 0.25f);
 		addNoise(nw, rd, 128.0f, options.noiseMultiplier * 0.125f);
 		Rivers *rivers = new Rivers(nw, maxHeight, sd);
@@ -327,7 +328,7 @@ namespace {
 	void finalRiverPass(Rivers **rivers, Mesh &mesh, float maxHeight, const Island::Options &options) {
 		delete *rivers;
 		MeshEdgeMap mep(mesh);
-		*rivers = new Rivers(mesh, maxHeight, 32.0f);
+		*rivers = new Rivers(mesh, maxHeight, 16.0f);
 		(*rivers)->smooth(mesh);
 		(*rivers)->carveInto(mesh, options.maxRiverGradient);
 	}
@@ -390,12 +391,92 @@ namespace {
 		}
 	}
 
+	struct SeaFinder {
+		const Mesh &mesh;
+		std::vector<bool> sea;
+		std::unordered_set<int> visited;
+
+		struct PathNode {
+			const PathNode *last;
+			int vertex;
+			float cost;
+		};
+
+		struct Comp {
+			bool operator()(const PathNode *a, const PathNode *b) const {
+				return a->cost < b->cost;
+			}
+		};
+
+		ObjectPool<PathNode> pool;
+		std::priority_queue<PathNode*, std::vector<PathNode*>, Comp> queue;
+
+		SeaFinder(const Mesh &mesh) : mesh(mesh), sea(mesh.vertices.size(), false), pool(32){
+			const MeshEdgeMap &mem = mesh.edgeMap();
+			std::vector<int> stack;
+			stack.reserve(sea.size());
+			{
+				Mesh::PerimeterSet ps;
+				mesh.getPerimeterSet(ps);
+				for (int i : ps) {
+					sea[i] = true;
+					stack.push_back(i);
+				}
+			}
+			while (!stack.empty()) {
+				int fringe = stack.back();
+				stack.pop_back();
+				for (auto i = mem.vertex(fringe); i.first != i.second; ++i.first) {
+					if (!sea[*i.first]) {
+						sea[*i.first] = true;
+						stack.push_back(*i.first);
+					}
+				}
+			}
+		}
+
+		void findSea(int vert, std::vector<int> &verts) {
+			const MeshEdgeMap &mem = mesh.edgeMap();
+			PathNode *node = pool.allocate();
+			node->last = nullptr;
+			node->vertex = vert;
+			node->cost = mesh.vertices[vert].z;
+			queue.push(node);
+			visited.insert(vert);
+			while (!queue.empty()) {
+				node = queue.top();
+				if (sea[node->vertex]) {
+					break;
+				}
+				queue.pop();
+				for (auto i = mem.vertex(node->vertex); i.first != i.second; ++i.first) {
+					if (visited.find(*i.first) != visited.end()) {
+						continue;
+					}
+					visited.insert(*i.first);
+					PathNode *next = pool.allocate();
+					next->vertex = *i.first;
+					next->last = node;
+					next->cost = mesh.vertices[next->vertex].z + node->cost;
+					queue.push(next);
+				}
+			}
+			for (const PathNode *i = node; i; i = i->last) {
+				verts.push_back(i->vertex);
+			}
+			std::reverse(verts.begin(), verts.end());
+		}
+	};
+
 	void createRiverLists(const Mesh &mesh, const Rivers &rivers, Island::RiverVertexLists &lists) {
 		int len = rivers.riverList().size();
 		lists.reserve(len);
 		std::unordered_set<int> used;
+		std::vector<int> toSeaList;
+		SeaFinder seaFinder(mesh);
 		for (int i = 0; i != len; ++i) {
 			used.clear();
+			toSeaList.clear();
 			auto list = std::make_shared<Island::VertexList>();
 			list->reserve(rivers.riverList()[i]->vertices.size() << 1);
 			for (const auto &j : rivers.riverList()[i]->vertices) {
@@ -403,6 +484,11 @@ namespace {
 					list->emplace_back(mesh.vertices[j.index], j.flow);
 					used.insert(j.index);
 				}
+			}
+			const auto &k = rivers.riverList()[i]->vertices.back();
+			seaFinder.findSea(k.index, toSeaList);
+			for (size_t j = 1; j < toSeaList.size(); ++j) {
+				list->emplace_back(mesh.vertices[j], k.flow);
 			}
 			lists.push_back(list);
 		}
@@ -455,12 +541,12 @@ void Island::generateTopology(std::default_random_engine &rd, const Options &opt
 	preSlice[1] = preSlice[2];
 	preSlice[1].dirty();
 	preSlice[1].tesselate();
-	erode(rd, &rivers/*, preSlice[2]*/, preSlice[1], maxZ, options, 2, [](Mesh &nw, int erosianPasses) {
-		applyHydrolicErosian(nw, erosianPasses);
+	erode(rd, &rivers, preSlice[1], maxZ, options, 2.0f, [](Mesh &nw) {
+		applyHydrolicErosian(nw);
 	});
 	preSlice[0] = preSlice[1];
 	preSlice[0].tesselate();
-	//faceErode(preSlice[0]);
+	preSlice[0].smoothIfPositiveZ();
 	preSlice[0].dirty();
 	for (int i = 0; i != 8; ++i) {
 		eatCoastlines(preSlice[0]);
@@ -469,14 +555,11 @@ void Island::generateTopology(std::default_random_engine &rd, const Options &opt
 	improveCliffs(preSlice[0]);
 	formBeaches(preSlice[0]);
 	preSlice[0].normals.clear();
-	std::vector<float> richness;
-	erode(rd, &rivers/*, preSlice[1]*/, preSlice[0], maxZ, options, 8, [&richness, &rd, this](Mesh &nw, int erosianPasses) {
-		applyHydrolicErosian(rd, nw, erosianPasses, richness, mDecoration);
+	erode(rd, &rivers, preSlice[0], maxZ, options, 4.0f, [&rd, this](Mesh &nw) {
+		mDecoration = std::make_unique<Decoration>(nw);
+		applyHydrolicErosian(rd, *mDecoration);
 	});
-	mSoilRichness = preSlice[0];
-	for (size_t i = 0; i != richness.size(); ++i) {
-		mSoilRichness.vertices[i].z = richness[i];
-	}
+	preSlice[0] = mDecoration->mesh;
 	preSlice[0].tesselate();
 	preSlice[0].dirty();
 	finalRiverPass(&rivers, preSlice[0], maxZ, options);
@@ -489,7 +572,6 @@ void Island::generateTopology(std::default_random_engine &rd, const Options &opt
 		preSlice[i].slice(BoundingBox(0.0f, 0.0f, -0.02f, 1.0f, 1.0f, 1.0f), lods[i]);
 	}
 	delete rivers;
-	placeCoastalRocks(rd, lods[1], mDecoration);
-	mDecoration.addRocks(rd, lods[0]);
-	//mRivers = std::unique_ptr<Rivers>(rivers);
+	placeCoastalRocks(rd, *mDecoration);
+	mDecoration->addRocks(rd);
 }

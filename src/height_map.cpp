@@ -89,8 +89,7 @@ void HeightMap::load(const Mesh &mesh, float maxHeight) {
 
 void HeightMap::load(const Mesh &mesh) {
 	mSeaLevel = LoadHeightMap(*this, mesh, [](float min, float max) {
-		float val = max - min;
-		return val > 1.0f ? 1.0f : val;
+		return max - min;
 	});
 }
 

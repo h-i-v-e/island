@@ -5,14 +5,19 @@
 #include <random>
 
 #include "vector2.h"
+#include "grid.h"
+#include "mesh.h"
 
 namespace motu {
-	struct Mesh;
 
 	struct Decoration {
 		std::vector<Vector2> trees, bushes, bigRocks, mediumRocks, smallRocks;
+		Mesh mesh;
+		std::vector<float> forest, soilRichness;
 
-		void addRocks(std::default_random_engine &rnd, const Mesh &mesh);
+		Decoration(const Mesh &topology) : mesh(topology) {}
+		
+		void addRocks(std::default_random_engine &rnd);
 	};
 }
 

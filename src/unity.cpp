@@ -36,6 +36,15 @@ namespace {
 		exp.triangles.data = reinterpret_cast<int*>(mesh->triangles.data());
 		exp.triangles.length = static_cast<int>(mesh->triangles.size());
 	}
+
+	Grid<float> &createHeightMap(const Mesh &mesh, const std::vector<float> &z, Grid<float> &out) {
+		Mesh buf = mesh;
+		for (size_t i = 0; i != z.size(); ++i) {
+			buf.vertices[i].z = z[i];
+		}
+		buf.rasterize(out);
+		return out;
+	}
 }
 
 void *CreateMotu(int seed, const MotuOptions *options) {
@@ -74,7 +83,7 @@ ExportHeightMapWithSeaLevel *CreateHeightMap(void *motu, int resolution) {
 	island->lod(0).slice(BoundingBox(Vector3(0.0f, 0.0f, -0.02f), Vector3(1.0f, 1.0f, 1.0f)), mesh);
 	HeightMap *hm = new HeightMap(resolution, resolution);
 	hm->load(mesh);
-	for (int i = 0; i != 4; ++i) {
+	for (int i = 0; i != 8; ++i) {
 		hm->smooth();
 	}
 	return reinterpret_cast<ExportHeightMapWithSeaLevel*>(hm);
@@ -135,9 +144,10 @@ void CreateQuantisedRiverMeshes(void *motu, ExportHeightMapWithSeaLevel *ehm, Ex
 	exp->length = static_cast<int>(len);
 	exp->data = new ExportQuantisedRiver[len];
 	std::vector<QuantisedRiver> outputs(len);
+	RiverQuantiser rq(*hm);
 	for (size_t i = 0; i != len; ++i) {
 		outputs[i].reserve(island->riverVertexLists()[i]->size());
-		quantiseRiver(*hm, *island->riverVertexLists()[i], outputs[i]);
+		rq.quantiseRiver(*island->riverVertexLists()[i], outputs[i]);
 	}
 	std::vector<QuantisedRiver*> buffer(len);
 	std::vector<int> joinTos;
@@ -215,10 +225,17 @@ void GetDecoration(void *motu, ExportDecoration *exp) {
 ExportHeightMap* CreateSoilRichnessMap(void *motu, int resolution) {
 	const Island *island = reinterpret_cast<Island*>(motu);
 	Grid<float> *grid = new Grid<float>(resolution, resolution);
-	island->soilRichness().rasterize(*grid);
+	createHeightMap(island->decoration().mesh, island->decoration().soilRichness, *grid);
 	return reinterpret_cast<ExportHeightMap*>(grid);
 }
 
-void ReleaseSoilRichnessMap(ExportHeightMap *ehm) {
+ExportHeightMap* CreateForestMap(void *motu, int resolution) {
+	const Island *island = reinterpret_cast<Island*>(motu);
+	Grid<float> *grid = new Grid<float>(resolution, resolution);
+	createHeightMap(island->decoration().mesh, island->decoration().forest, *grid);
+	return reinterpret_cast<ExportHeightMap*>(grid);
+}
+
+void ReleaseFoliageMap(ExportHeightMap *ehm) {
 	delete reinterpret_cast<Grid<float>*>(ehm);
 }

@@ -11,6 +11,9 @@
 #ifndef RIVER_DEPTH_MUL
 #define RIVER_DEPTH_MUL 0.5f
 #endif
+#ifndef RIVER_WIDTH_MUL
+#define RIVER_WIDTH_MUL 0.001f
+#endif
 
 using namespace motu;
 
@@ -33,118 +36,11 @@ namespace {
 		}
 	};
 
-	int distanceToSea(int source, const Mesh &mesh) {
-		std::vector<Step> steps(mesh.vertices.size());
-		std::priority_queue<Step*, std::vector<Step*>, CompareSteps> fringe;
-		steps[source].offset = source;
-		steps[source].visited = true;
-		fringe.push(&steps[source]);
-		const MeshEdgeMap &edges = mesh.edgeMap();
-		while (!fringe.empty()) {
-			Step *step(fringe.top());
-			fringe.pop();
-			auto range = edges.vertex(step->offset);
-			while (range.first != range.second) {
-				Step *next = &steps[*range.first];
-				if (!next->visited) {
-					next->offset = *range.first;
-					next->cost = step->cost + mesh.vertices[next->offset].z;
-					next->last = step->offset;
-					next->visited = true;
-					fringe.push(next);
-				}
-				++range.first;
-			}
-		}
-		if (!fringe.empty()) {
-			int count = 0;
-			for (int i = fringe.top()->offset; i != -1; i = steps[i].last) {
-				++count;
-			}
-			return count;
-		}
-	}
-
-	void bruteForceToSea(int source, const Mesh &mesh, std::vector<int> &vertices, std::unordered_set<int> &rivers) {
-		std::vector<Step> steps(mesh.vertices.size());
-		for (int i : vertices) {
-			steps[i].visited = true;
-		}
-		std::priority_queue<Step*, std::vector<Step*>, CompareSteps> fringe;
-		steps[source].offset = source;
-		steps[source].visited = true;
-		fringe.push(&steps[source]);
-		std::vector<int> opts;
-		const MeshEdgeMap &edges = mesh.edgeMap();
-		while (!fringe.empty()) {
-			auto i = rivers.find(fringe.top()->offset);
-			if (mesh.vertices[fringe.top()->offset].z <= 0.0f || i != rivers.end()) {
-				break;
-			}
-			Step *step(fringe.top());
-			fringe.pop();
-			auto range = edges.vertex(step->offset);
-			while (range.first != range.second) {
-				Step *next = &steps[*range.first];
-				if (!next->visited) {
-					next->offset = *range.first;
-					if (rivers.find(next->offset) != rivers.end()) {
-						next->last = step->offset;
-						opts.push_back(next->offset);
-					}
-					else {
-						next->cost = step->cost + mesh.vertices[next->offset].z;
-						next->last = step->offset;
-						next->visited = true;
-						fringe.push(next);
-					}
-				}
-				++range.first;
-			}
-			if (!opts.empty()) {
-				float lowest = std::numeric_limits<float>::max();
-				for (int i : opts) {
-					float z = mesh.vertices[i].z;
-					if (z < lowest) {
-						lowest = z;
-						source = i;
-					}
-				}
-				std::vector<int> tmp;
-				for (int i = source; i != -1; i = steps[i].last) {
-					rivers.insert(i);
-					tmp.push_back(i);
-				}
-				std::copy(tmp.rbegin(), tmp.rend(), std::back_inserter(vertices));
-				return;
-				//vertices.push_back(source);
-			}
-		}
-		if (!fringe.empty()) {
-			std::vector<int> tmp;
-			for (int i = fringe.top()->offset; i != -1; i = steps[i].last) {
-				rivers.insert(i);
-				tmp.push_back(i);
-			}
-			std::copy(tmp.rbegin(), tmp.rend(), std::back_inserter(vertices));
-		}
-	}
-
-	/*struct OutFlowStep {
-		int vert;
-		float z;
-
-		OutFlowStep(int vert, float z) : vert(vert), z(z) {}
-
-		constexpr bool operator < (const OutFlowStep &out) const {
-			return z < out.z;
-		}
-	};*/
-
-	void traceToSea(int source, Mesh &mesh, std::vector<int> &vertices, std::unordered_set<int> &rivers){
+	void traceToSea(int source, Mesh &mesh, std::vector<int> &vertices, std::unordered_set<int> &rivers, const std::vector<bool> &seaVerts){
 		std::vector<int> opt;
 		const MeshEdgeMap &edges = mesh.edgeMap();
-		for (float z = mesh.vertices[source].z; z >= 0.0f; z = mesh.vertices[source].z) {
+		std::unordered_set<int> visited;
+		for (float z = mesh.vertices[source].z; !seaVerts[source]; z = mesh.vertices[source].z) {
 			vertices.push_back(source);
 			auto n = edges.vertex(source);
 			int next = -1;
@@ -155,7 +51,7 @@ namespace {
 					opt.push_back(*i);
 				}
 				float nz = mesh.vertices[vert].z;
-				if (nz < z) {
+				if (nz <= z && visited.find(vert) == visited.end()) {
 					z = nz;
 					next = vert;
 				}
@@ -178,9 +74,15 @@ namespace {
 			}
 			if (next == -1) {
 				vertices.pop_back();
-				bruteForceToSea(source, mesh, vertices, rivers);
-				return;
+				if (vertices.empty()) {
+					return;
+				}
+				next = vertices.back();
+				visited.erase(next);
+				mesh.vertices[source].z = mesh.vertices[next].z;
+				vertices.pop_back();
 			}
+			visited.insert(next);
 			source = next;
 		}
 	}
@@ -254,20 +156,15 @@ namespace {
 				}
 			}
 		}
-		std::vector<std::pair<int, int>> sortList;
-		sortList.reserve(count);
+		sources.reserve(count);
 		for (auto i = pots.begin(); i != pots.end(); ++i) {
 			if (i->second) {
-				sortList.emplace_back(i->first, distanceToSea(i->first, mesh));
+				sources.push_back(i->first);
 			}
 		}
-		std::sort(sortList.begin(), sortList.end(), [](const std::pair<int, int> &a, const std::pair<int, int> &b) {
-			return a.second < b.second;
+		std::sort(sources.begin(), sources.end(), [&mesh](int a, int b) {
+			return mesh.vertices[a].z < mesh.vertices[b].z;
 		});
-		sources.reserve(sortList.size());
-		for (auto i : sortList) {
-			sources.push_back(i.first);
-		}
 	}
 
 	void mergeRivers(Rivers::RiverList &rivers) {
@@ -279,7 +176,7 @@ namespace {
 			for (size_t i = 0; i != rivers.size(); ++i) {
 				const River &river = *rivers[i];
 				for (int j = 0; j != river.vertices.size() - 1; ++j) {
-					verts.emplace(river.vertices[j].index, i);
+					verts.emplace(river.vertices[j].index, static_cast<int>(i));
 				}
 			}
 			for (size_t i = 0; i != rivers.size(); ++i) {
@@ -311,6 +208,66 @@ namespace {
 			}
 		}
 		while (!removed.empty());
+	}
+
+	size_t findJoin(const River &from, const River &to) {
+		for (size_t i = 0; i != to.vertices.size(); ++i) {
+			if (to.vertices[i].index == from.vertices.back().index) {
+				return i;
+			}
+		}
+	}
+
+	void addFlow(Rivers::RiverList &rivers, River &to, size_t offset, float amount) {
+		while (offset != to.vertices.size()) {
+			to.vertices[offset++].flow = amount;
+		}
+		if (to.join != -1) {
+			River &next = *rivers[to.join];
+			addFlow(rivers, next, findJoin(to, next), amount);
+		}
+	}
+
+	void updateFlow(Rivers::RiverList &rivers) {
+		for (size_t i = 0; i != rivers.size(); ++i) {
+			River &river = *rivers[i];
+			if (river.join == -1) {
+				continue;
+			}
+			River &join = *rivers[river.join];
+			addFlow(rivers, join, findJoin(river, join), river.vertices.back().flow);
+		}
+	}
+
+	void findRiverJoins(const Mesh &mesh, Rivers::RiverList &rivers) {
+		const MeshEdgeMap &mem = mesh.edgeMap();
+		std::unordered_map<int, size_t> verts;
+		for (size_t i = 0; i != rivers.size(); ++i) {
+			River &river = *rivers[i];
+			river.join = -1;
+			for (size_t j = 0; j != river.vertices.size(); ++j){
+				auto k = mem.vertex(river.vertices[j].index);
+				while (k.first != k.second) {
+					auto l = verts.find(*k.first);
+					if (l != verts.end() && l->second != i) {
+						river.vertices.resize(j + 1);
+						River &joined = *rivers[l->second];
+						for (size_t m = 0; m != joined.vertices.size(); ++m) {
+							if (joined.vertices[m].index == l->first) {
+								river.vertices.push_back(joined.vertices[m]);
+								river.join = l->second;
+								break;
+							}
+						}
+						goto nextRiver;
+					}
+					++k.first;
+				}
+				verts.emplace(river.vertices[j].index, i);
+			}
+		nextRiver:
+			continue;
+		}
 	}
 
 	int findJoinVertex(const Mesh &mesh, int a, int b) {
@@ -362,10 +319,10 @@ namespace {
 		}
 	}
 
-	void fixInlandSeas(Mesh &mesh) {
+	void fixInlandSeas(Mesh &mesh, std::vector<bool> &visited) {
 		Mesh::PerimeterSet perimeter;
 		mesh.getPerimeterSet(perimeter);
-		std::vector<bool> visited(mesh.vertices.size(), false);
+		visited.resize(mesh.vertices.size(), false);
 		std::stack<int> waiting;
 		for (int vert : perimeter) {
 			if (mesh.vertices[vert].z < 0.0f) {
@@ -403,45 +360,6 @@ namespace {
 	float computeAltMul(float maxHeight, float z, float invMaxHeight) {
 		float altMul = (maxHeight - z) * invMaxHeight;
 		return altMul * altMul * z * RIVER_DEPTH_MUL;
-	}
-
-	void carveRiverValley(std::unordered_set<int> carved, Mesh &mesh, const River &river, float maxHeight, float depthMultiplier) {
-		static float maxOut = 4.0f;
-		float invMaxHeight = 1.0f / maxHeight;
-		const MeshEdgeMap &edges = mesh.edgeMap();
-		std::stack<std::pair<int, int>> unfurl;
-		for (const auto &i : river.vertices) {
-			float carve = sqrtf(i.flow) * depthMultiplier;
-			int steps = roundf(carve * maxOut);
-			if (steps == 0) {
-				continue;
-			}
-			auto j = edges.vertex(i.index);
-			while (j.first != j.second) {
-				if (carved.find(*j.first) == carved.end()) {
-					unfurl.emplace(*j.first, steps);
-					carved.insert(*j.first);
-				}
-				++j.first;
-			}
-			while (!unfurl.empty()) {
-				auto k = unfurl.top();
-				unfurl.pop();
-				float z = mesh.vertices[k.first].z;
-				float altMul = computeAltMul(maxHeight, mesh.vertices[k.first].z, invMaxHeight);
-				mesh.vertices[k.first].z -= altMul * carve * 0.5f;
-				if (k.second > 1) {
-					auto l = edges.vertex(k.first);
-					while (l.first != l.second) {
-						if (carved.find(*l.first) == carved.end()) {
-							unfurl.emplace(*l.first, k.second - 1);
-							carved.insert(*l.first);
-						}
-						++l.first;
-					}
-				}
-			}
-		}
 	}
 
 	struct TesselationMapper {
@@ -493,23 +411,38 @@ namespace {
 			}
 		}
 	};
+
+	inline int addRiverVertex(Mesh &out, float surface, const Vector2 &disp) {
+		int v = static_cast<int>(out.vertices.size());
+		out.vertices.emplace_back(disp.x, disp.y, surface);
+		return v;
+	}
+
+	inline void addTriangle(Mesh &out, int a, int b, int c) {
+		out.triangles.push_back(a);
+		out.triangles.push_back(b);
+		out.triangles.push_back(c);
+	}
 }
 
 Rivers::Rivers(Mesh &mesh, float maxHeight, float flowSDthreshold) {
-	fixInlandSeas(mesh);
+	std::vector<bool> seas;
+	fixInlandSeas(mesh, seas);
 	std::vector<int> sources, flow, river;
 	std::unordered_set<int> bottoms, in;
 	findSources(flowSDthreshold, sources, flow, mesh);
 	int offset = 0;
 	for (int source : sources){
 		river.clear();
-		traceToSea(source, mesh, river, in);
+		traceToSea(source, mesh, river, in, seas);
 		emplaceRiver(0, flow, river, mRivers);
 	}
 	std::sort(mRivers.begin(), mRivers.end(), [&mesh](const River::Ptr &a, const River::Ptr &b) {
 		return mesh.vertices[a->vertices.back().index].z > mesh.vertices[b->vertices.back().index].z;
 	});
 	mergeRivers(mRivers);
+	findRiverJoins(mesh, mRivers);
+	updateFlow(mRivers);
 	int maxFlow = 0;
 	for (const auto &river : mRivers) {
 		if (river->vertices.empty()) {
@@ -537,24 +470,6 @@ void Rivers::carveInto(Mesh &mesh, float maxGradient) const{
 		return mesh.vertices[a->vertices.back().index].z < mesh.vertices[b->vertices.back().index].z;
 	});
 	std::vector<float> surfaces(mesh.vertices.size(), -1.0f);
-	/*for (const auto &river : copy) {
-		int i = river->vertices.size() - 1;
-		Vector3 *last = &mesh.vertices[i];
-		for (--i; i >= 0; --i) {
-			const River::Vertex &rvert = river->vertices[i];
-			Vector3 *current = &mesh.vertices[rvert.index];
-			Vector3 direction = *current - *last;
-			float mag = direction.magnitude();
-			float slope = direction.z / mag;
-			if (last->z >= 0.0f && slope > maxGradient) {
-				//if (slope < 0.8f) {
-					current->z = last->z + mag * maxGradient;
-				//}
-				//otherwise a waterfall.
-			}
-			last = current;
-		}
-	}*/
 	for (const auto &river : copy) {
 		float surface = -1.0f;
 		for (auto i = river->vertices.rbegin(); i != river->vertices.rend(); ++i) {
@@ -584,15 +499,6 @@ void Rivers::carveInto(Mesh &mesh, float maxGradient) const{
 			float altMul = computeAltMul(maxHeight, mesh.vertices[i->index].z, invMaxHeight);
 			i->surface = surfaces[i->index] - altMul * sqrtf(static_cast<float>(i->flow)) * depthMultiplier * 0.5f;
 		}
-	}
-	std::unordered_set<int> visited;
-	for (const auto &i : mRivers) {
-		for (const auto &j : i->vertices) {
-			visited.insert(j.index);
-		}
-	}
-	for (const auto &i : mRivers) {
-		carveRiverValley(visited, mesh, *i, maxHeight, depthMultiplier);
 	}
 }
 
@@ -635,43 +541,47 @@ void Rivers::smooth(Mesh &mesh) const{
 }
 
 Mesh &Rivers::getMesh(const River &river, const Mesh &mesh, Mesh &out) const{
-	int num = 0;
-	const MeshTriangleMap &triangleMap = mesh.triangleMap();
-	for (auto i = river.vertices.begin(); i != river.vertices.end(); ++i) {
-		auto ends = triangleMap.vertex(i->index);
-		num += ends.second - ends.first;
+	int riverLength = static_cast<int>(river.vertices.size());
+	if (riverLength < 3) {
+		return out;
 	}
-	std::unordered_map<int, int> vertexMap;
-	vertexMap.reserve(num * 3);
-	out.triangles.reserve(num * 3);
-	std::unordered_set<int> added;
-	added.reserve(num);
-	out.vertices.reserve(num + 2);
-	for (auto i = river.vertices.rbegin(); i != river.vertices.rend(); ++i) {
-		float z = i->surface;
-		auto ends = triangleMap.vertex(i->index);
-		while (ends.first != ends.second) {
-			int triOff = *ends.first++;
-			if (added.find(triOff) == added.end()) {
-				added.insert(triOff);
-				for (int i = 0; i != 3; ++i) {
-					int vert = mesh.triangles[triOff + i];
-					auto j = vertexMap.find(vert);
-					if (j == vertexMap.end()) {
-						int val = out.vertices.size();
-						out.triangles.push_back(val);
-						vertexMap.emplace(vert, val);
-						Vector3 v3 = mesh.vertices[vert];
-						v3.z = z;
-						out.vertices.push_back(v3);
-					}
-					else {
-						out.triangles.push_back(j->second);
-					}
-				}
-			}
-		}
+	out.vertices.push_back(mesh.vertices[river.vertices[0].index]);
+	Vector2 across = (
+		mesh.vertices[river.vertices[2].index].asVector2() -
+		mesh.vertices[river.vertices[0].index].asVector2()
+		).perp() * sqrtf(river.vertices[1].flow) * depthMultiplier * RIVER_WIDTH_MUL;
+	int lastLeft, lastRight;
+	{
+		const Vector3 &centre = mesh.vertices[river.vertices[1].index];
+		float surface = river.vertices[1].surface;
+		lastLeft = addRiverVertex(out, surface, centre.asVector2() - across);
+		lastRight = addRiverVertex(out, surface, centre.asVector2() + across);
 	}
+	addTriangle(out, 0, lastLeft, lastRight);
+	for (int i = 3; i < riverLength; ++i) {
+		across = (
+			mesh.vertices[river.vertices[i - 2].index].asVector2() -
+			mesh.vertices[river.vertices[i].index].asVector2()
+			).perp() * sqrtf(river.vertices[i - 1].flow) * depthMultiplier * RIVER_WIDTH_MUL;
+		const Vector3 &centre = mesh.vertices[river.vertices[i - 1].index];
+		float surface = river.vertices[i - 1].surface;
+		int left = addRiverVertex(out, surface, centre.asVector2() - across);
+		int right = addRiverVertex(out, surface, centre.asVector2() + across);
+		addTriangle(out, left, lastLeft, lastRight);
+		addTriangle(out, left, lastRight, right);
+		lastLeft = left;
+		lastRight = right;
+	}
+	across = (
+		mesh.vertices[river.vertices[riverLength - 2].index].asVector2() -
+		mesh.vertices[river.vertices[riverLength - 1].index].asVector2()
+		).perp() * sqrtf(river.vertices[riverLength - 1].flow) * depthMultiplier * RIVER_WIDTH_MUL;
+	const Vector3 &centre = mesh.vertices[river.vertices[riverLength - 1].index];
+	float surface = river.vertices[riverLength - 1].surface;
+	int left = addRiverVertex(out, surface, centre.asVector2() - across);
+	int right = addRiverVertex(out, surface, centre.asVector2() + across);
+	addTriangle(out, left, lastLeft, lastRight);
+	addTriangle(out, left, lastRight, right);
 	out.calculateNormals();
 	return out;
 }

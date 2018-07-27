@@ -77,11 +77,7 @@ namespace motu {
 		}
 
 		const Decoration &decoration() const{
-			return mDecoration;
-		}
-
-		const Mesh &soilRichness() const {
-			return mSoilRichness;
+			return *mDecoration;
 		}
 
 	private:
@@ -91,8 +87,7 @@ namespace motu {
 		//std::unique_ptr<Rivers> mRivers;
 		RiverMeshes mRiverMeshes;
 		RiverVertexLists mRiverVertexLists;
-		Decoration mDecoration;
-		Mesh mSoilRichness;
+		std::unique_ptr<Decoration> mDecoration;
 
 		void generateTopology(std::default_random_engine &, const Options &);
 	};

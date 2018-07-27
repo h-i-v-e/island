@@ -330,10 +330,10 @@ void motu::formBeaches(Mesh &mesh) {
 	}
 }
 
-void motu::placeCoastalRocks(std::default_random_engine &rd, Mesh &mesh, Decoration &decoration) {
-	const MeshEdgeMap &mep = mesh.edgeMap();
+void motu::placeCoastalRocks(std::default_random_engine &rd, Decoration &decoration) {
+	const MeshEdgeMap &mep = decoration.mesh.edgeMap();
 	Coastlines coastlines;
-	CoastMapper coastMapper(mesh);
+	CoastMapper coastMapper(decoration.mesh);
 	std::unordered_set<int> rocked;
 	std::uniform_real_distribution<float> full(0.0f, 1.0f);
 	std::uniform_real_distribution<float> half(0.5f, 1.0f);
@@ -345,8 +345,8 @@ void motu::placeCoastalRocks(std::default_random_engine &rd, Mesh &mesh, Decorat
 	for (const auto &i : coastlines) {
 		for (const auto &j : *i) {
 			if (j.second > 0) {
-				if (full(rd) < GetRockChance(mesh, j.first)) {
-					decoration.bigRocks.push_back(mesh.vertices[j.first].asVector2());
+				if (full(rd) < GetRockChance(decoration.mesh, j.first)) {
+					decoration.bigRocks.push_back(decoration.mesh.vertices[j.first].asVector2());
 					rocked.insert(j.first);
 				}
 			}
@@ -355,17 +355,17 @@ void motu::placeCoastalRocks(std::default_random_engine &rd, Mesh &mesh, Decorat
 	for (const auto &i : coastlines) {
 		for (const auto &j : *i) {
 			if (j.second > 0) {
-				const Vector2 &middle = mesh.vertices[j.first].asVector2();
+				const Vector2 &middle = decoration.mesh.vertices[j.first].asVector2();
 				auto neighbours = mep.vertex(j.first);
 				while (neighbours.first != neighbours.second) {
 					int offset = *neighbours.first++;
-					const Vector2 &neighbour = mesh.vertices[offset].asVector2();
+					const Vector2 &neighbour = decoration.mesh.vertices[offset].asVector2();
 					if (rocked.find(offset) == rocked.end()) {
-						if (full(rd) > GetRockChance(mesh, offset)) {
+						if (full(rd) > GetRockChance(decoration.mesh, offset)) {
 							continue;
 						}
 						Vector2 shift = neighbour - middle;
-						if (!coastMapper.onCoast(offset) && mesh.vertices[offset].z > 0.0f) {
+						if (!coastMapper.onCoast(offset) && decoration.mesh.vertices[offset].z > 0.0f) {
 							shift *= half(rd);
 							decoration.bigRocks.push_back(middle + shift);
 						}
@@ -385,12 +385,12 @@ void motu::placeCoastalRocks(std::default_random_engine &rd, Mesh &mesh, Decorat
 				auto neighbours = mep.vertex(j.first);
 				while (neighbours.first != neighbours.second) {
 					int offset = *neighbours.first++;
-					const Vector2 &neighbour = mesh.vertices[offset].asVector2();
+					const Vector2 &neighbour = decoration.mesh.vertices[offset].asVector2();
 					auto neighboursNeighbours = mep.vertex(offset);
 					while (neighboursNeighbours.first != neighboursNeighbours.second) {
 						offset = *neighboursNeighbours.first++;
 						if (rocked.find(offset) == rocked.end()) {
-							const Vector2 &pos = mesh.vertices[offset].asVector2();
+							const Vector2 &pos = decoration.mesh.vertices[offset].asVector2();
 							decoration.smallRocks.push_back(neighbour + ((pos - neighbour) * eigth(rd)));
 							rocked.insert(offset);
 						}

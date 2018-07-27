@@ -1,3 +1,5 @@
+#include <queue>
+
 #include "island.h"
 #include "vector2int.h"
 #include "height_map.h"
@@ -13,7 +15,19 @@ namespace motu {
 
 	typedef std::vector<QuantisedRiverNode> QuantisedRiver;
 
-	QuantisedRiver &quantiseRiver(const Grid<float> &, const Island::VertexList &, QuantisedRiver &);
+	class RiverQuantiser {
+	public:
+		RiverQuantiser(const HeightMap &hm) : heightMap(hm), seaMap(hm.width(), hm.height()) {
+			populateSeaMap();
+		}
+
+		QuantisedRiver &quantiseRiver(const Island::VertexList &, QuantisedRiver &);
+	private:
+		const HeightMap &heightMap;
+		Grid<bool> seaMap;
+
+		void populateSeaMap();
+	};
 
 	//rivers are deduped and the rivers they join are mapped with the same offsets in flowIntos
 	void dedupeQuantisedRivers(HeightMap &grid, std::vector<QuantisedRiver*> &rivers, std::vector<int> &flowIntos);

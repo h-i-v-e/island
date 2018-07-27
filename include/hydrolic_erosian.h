@@ -12,9 +12,9 @@ namespace motu {
 	struct Mesh;
 	class MeshEdgeMap;
 
-	Mesh &applyHydrolicErosian(std::default_random_engine &rd, Mesh &mesh, int iterations, std::vector<float> &soilRichness, Decoration &decoration);
+	Mesh &applyHydrolicErosian(std::default_random_engine &rd, Decoration &decoration);
 
-	Mesh &applyHydrolicErosian(Mesh &mesh, int iterations);
+	Mesh &applyHydrolicErosian(Mesh &mesh);
 }
 
 #endif

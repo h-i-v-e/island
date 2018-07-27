@@ -29,7 +29,7 @@ namespace motu {
 
 	void formBeaches(Mesh &);
 
-	void placeCoastalRocks(std::default_random_engine &, Mesh &, Decoration &decoration);
+	void placeCoastalRocks(std::default_random_engine &, Decoration &decoration);
 }
 
 #endif

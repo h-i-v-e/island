@@ -172,7 +172,7 @@ inline float byteToFloat(uint32_t val, uint32_t shift) {
 
 }*/
 
-TEST_CASE("Continent", "Continent"){
+/*TEST_CASE("Continent", "Continent"){
     random_device rd;
     default_random_engine rand(rd());
 	Island::Options options;
@@ -203,7 +203,9 @@ TEST_CASE("Continent", "Continent"){
 		Vector3 colour = Vector3(1.0f, 1.0f, 1.0f) * sun.dot(normal) * occlusian;
 		raster.data()[i] = toColour32(colour);
 	}
-
+	for (auto i = island.riverMeshes().begin(); i != island.riverMeshes().end(); ++i) {
+		raster.draw(**i, 0x00000000);
+	}
     int rasterLength = raster.length() * 3;
     std::vector<unsigned char> buffer;
     buffer.reserve(rasterLength);
@@ -215,9 +217,9 @@ TEST_CASE("Continent", "Continent"){
     }
     //std::copy(raw, raw + rasterLength, std::back_inserter(buffer));
     writePNG("/Users/jerome/test.png", buffer, 2048, 2048);
-}
+}*/
 
-/*TEST_CASE("unity", "unity") {
+TEST_CASE("unity", "unity") {
 	MotuOptions options;
 	options.coastalSlopeMultiplier = 1.0f;
 	options.erosianPasses = 16;
@@ -230,7 +232,7 @@ TEST_CASE("Continent", "Continent"){
 	options.waterRatio = 0.4f;
 	void *handle = CreateMotu(666, &options);
 	ExportHeightMapWithSeaLevel *ehm = CreateHeightMap(handle, 4096);
-	ExportHeightMap *soil = CreateSoilRichnessMap(handle, 4096);
+	ExportHeightMap *soil = CreateForestMap(handle, 4096);
 	std::vector<uint8_t> buffer;
 	buffer.reserve(1024 * 1024 * 3.0f);
 	for (const float *i = soil->data, *j = soil->data + 4096 * 4096; i != j; ++i) {
@@ -240,14 +242,14 @@ TEST_CASE("Continent", "Continent"){
 		buffer.push_back(gun);
 	}
 	writePNG("/Users/jerome/test.png", buffer, 4096, 4096);
-	ReleaseSoilRichnessMap(soil);
+	ReleaseFoliageMap(soil);
 	ExportQuantisedRiverArray uvs;
 	CreateQuantisedRiverMeshes(handle, ehm, &uvs);
 	std::cout << uvs.length << std::endl;
 	ReleaseQuantisedRiverMeshes(&uvs);
 	ReleaseHeightMap(ehm);
 	ReleaseMotu(handle);
-}*/
+}
 
 
 /*TEST_CASE("makepolygon", "makepolygon") {

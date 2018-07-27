@@ -28,7 +28,7 @@ namespace {
 	}
 }
 
-void Decoration::addRocks(std::default_random_engine &rnd, const Mesh &mesh) {
+void Decoration::addRocks(std::default_random_engine &rnd) {
 	std::uniform_real<float> full(0.0f, 1.0f);
 	std::uniform_real<float> half(0.5f, 1.0f);
 	std::uniform_real<float> quarter(0.25f, 0.75f);

@@ -1,14 +1,17 @@
 #include <queue>
 #include <unordered_map>
+#include <stack>
+#include <array>
 
 #include "river_quantizer.h"
 #include "bresenham.h"
 #include "vector2int.h"
 #include "bounding_box.h"
 #include "brtree.h"
+#include "astar.h"
 
 #ifndef MAX_RIVER_DEPTH
-#define MAX_RIVER_DEPTH 3.0f
+#define MAX_RIVER_DEPTH 2.0f
 #endif
 #if !defined(TRIANGULATION_TLBR) && !defined(TRIANGULATION_BLTR)
 #define TRIANGULATION_BLTR
@@ -80,8 +83,8 @@ namespace {
 				if (z < lowest) {
 					lowest = z;
 				}
-				carveBack(heightMap, inbound, inbound.size() - 2, lowest);
-				carveBack(heightMap, outbound, j - 1, lowest);
+				carveBack(heightMap, inbound, static_cast<int>(inbound.size()) - 2, lowest);
+				carveBack(heightMap, outbound, static_cast<int>(j) - 1, lowest);
 				heightMap(join.x, join.y) = lowest;
 				heightMap(in.x, in.y) = lowest;
 				heightMap(up.x, up.y) = lowest;
@@ -174,7 +177,12 @@ namespace {
 			Mesh::PerimeterSet ps;
 			mesh.getPerimeterSet(ps);
 			for (auto i : ps.edgeSet) {
-				bres(mesh.vertices[i.first].x, mesh.vertices[i.first].y, mesh.vertices[i.second].x, mesh.vertices[i.second].y);
+				bres(
+					static_cast<int>(mesh.vertices[i.first].x),
+					static_cast<int>(mesh.vertices[i.first].y),
+					static_cast<int>(mesh.vertices[i.second].x),
+					static_cast<int>(mesh.vertices[i.second].y)
+				);
 			}
 			return out;
 		}
@@ -188,7 +196,10 @@ namespace {
 			float xScale = 1.0f / hm.width(), yScale = 1.0f / hm.height();
 			float deepest = bed.vertices.front().z - (yScale * 0.1f);
 			for (Vector3 &vert : bed.vertices) {
-				float depth = hm(vert.x, vert.y);
+				float depth = hm(
+					static_cast<int>(vert.x),
+					static_cast<int>(vert.y)
+				);
 				if (depth < deepest) {
 					deepest = depth;
 				}
@@ -241,12 +252,12 @@ namespace {
 				const Vector2 &uv = mesh.uv[i];
 				if (uv.x < 0.0f) {
 					if (uv.y > ha) {
-						endVertA = i;
+						endVertA = static_cast<int>(i);
 						ha = uv.y;
 					}
 				}
 				else if (uv.y > hb) {
-					endVertB = i;
+					endVertB = static_cast<int>(i);
 					hb = uv.y;
 				}
 			}
@@ -258,7 +269,7 @@ namespace {
 			for (int i : added) {
 				out += join.vertices[i].asVector2();
 			}
-			return out / added.size();
+			return out / static_cast<float>(added.size());
 		}
 
 		void sortByUv() {
@@ -274,7 +285,7 @@ namespace {
 				centre += join.vertices[i];
 				uv += join.uv[i];
 			}
-			centre /= in.size();
+			centre /= static_cast<float>(in.size());
 			centre += mesh.vertices[endVertA] + mesh.vertices[endVertB];
 			centre /= 3.0f;
 		}
@@ -295,98 +306,12 @@ namespace {
 			addTriangle(centreOffset, endVertA, endVertB);
 		}
 
-		/*struct UnClamper {
-			HeightMap &heightMap;
-			float lower;
-			std::unordered_set<Vector2Int, Hasher<Vector2Int>> visited;
-
-			UnClamper(HeightMap &heightMap) : heightMap(heightMap), lower(1.0f / heightMap.width()) {
-			}
-
-			void operator()(int x, int y) {
-				int maxX = x + 1;
-				if (maxX == heightMap.width()) {
-					--maxX;
-				}
-				int maxY = y + 1;
-				if (maxY == heightMap.height()) {
-					--maxX;
-				}
-				while (y <= maxY) {
-					for (int i = x; i <= maxX; ++i) {
-						Vector2Int pos(i, y);
-						if (visited.find(pos) == visited.end()) {
-							heightMap(i, y) -= lower;
-							visited.insert(pos);
-						}
-					}
-					++y;
-				}
-			}
-
-			void smooth() {
-				for (const Vector2Int &v : visited) {
-					int minX = v.x == 0 ? 0 : v.x - 1, minY = v.y == 0 ? 0 : v.y, maxX = v.x + 1, maxY = v.y + 1;
-					if (maxX == heightMap.width()) {
-						--maxX;
-					}
-					if (maxY == heightMap.height()) {
-						--maxY;
-					}
-					while (minY <= maxY){
-						for (int x = minX; x <= maxX; ++x) {
-							visited.emplace(x, minY);
-						}
-						++minY;
-					}
-				}
-				std::vector<std::pair<Vector2Int, float>> adjusted(visited.size());
-				for (const Vector2Int &v : visited) {
-					int minX = v.x == 0 ? 0 : v.x - 1, minY = v.y == 0 ? 0 : v.y, maxX = v.x + 1, maxY = v.y + 1;
-					if (maxX == heightMap.width()) {
-						--maxX;
-					}
-					if (maxY == heightMap.height()) {
-						--maxY;
-					}
-					float sum = 0.0f;
-					int count = 0;
-					while (minY <= maxY) {
-						for (int x = minX; x <= maxX; ++x) {
-							sum += heightMap(x, minY);
-							++count;
-						}
-						++minY;
-					}
-					adjusted.emplace_back(v, sum / count);
-				}
-				for (const auto &i : adjusted) {
-					heightMap(i.first.x, i.first.y) = i.second;
-				}
-			}
-		};
-
-		void unclampEdges() {
-			UnClamper unclamp(hm);
-			Bresenham<UnClamper> bres(unclamp);
-			for (size_t i = 1; i < in.size(); ++i) {
-				const Vector3 &a = mesh.vertices[in[i - 1]], &b = mesh.vertices[in[i]];
-				bres(static_cast<int>(a.x), static_cast<int>(a.y), static_cast<int>(b.x), static_cast<int>(b.y));
-			}
-			unclamp.smooth();
-		}*/
-
-		/*void fixDepth(int offset) {
-			const Vector3 &vec = mesh.vertices[offset];
-			hm(vec.x, vec.y) = vec.z - 3.0f;
-		}*/
-
 		void addRiverEnd() {
 			if (in.empty()) {
 				return;
 			}
 			for (size_t i = 0; i != in.size(); ++i) {
-				int replace = mesh.vertices.size();
+				int replace = static_cast<int>(mesh.vertices.size());
 				mesh.vertices.push_back(join.vertices[in[i]]);
 				mesh.uv.push_back(join.uv[in[i]]);
 				in[i] = replace;
@@ -465,7 +390,7 @@ namespace {
 			Vector2 centreUv;
 			findHub(centre, centreUv);
 			sortByUv();
-			centreIdx = mesh.vertices.size();
+			centreIdx = static_cast<int>(mesh.vertices.size());
 			mesh.vertices.push_back(centre);
 			mesh.uv.push_back(centreUv);
 			addRiverEnd();
@@ -533,117 +458,6 @@ namespace {
 					}
 				}
 			} while (removing);
-		}
-	};
-
-	struct LocalMinimaEnforcer {
-		HeightMap &heights;
-		std::unordered_map<Vector2Int, float, Hasher<Vector2Int>> visited;
-
-		struct Fringe {
-			Vector2Int pos;
-			float dist;
-			float minHeight;
-
-			bool operator<(const Fringe &other) const{
-				return dist < other.dist;
-			}
-
-			Fringe(const Vector2Int &pos, float dist, float minHeight) : pos(pos), dist(dist), minHeight(minHeight) {}
-		};
-
-		std::priority_queue<Fringe> fringe;
-		Vector2Int topLeft, bottomRight;
-
-		LocalMinimaEnforcer(HeightMap &heights) : heights(heights){
-		}
-
-		void clear() {
-			visited.clear();
-		}
-
-		void setBounds(const Vector2Int &pos) {
-			topLeft.x = pos.x == 0 ? 0 : pos.x - 1;
-			topLeft.y = pos.y == 0 ? 0 : pos.y - 1;
-			bottomRight.x = pos.x + 1;
-			if (bottomRight.x == heights.width()) {
-				--bottomRight.x;
-			}
-			bottomRight.y = pos.y + 1;
-			if (bottomRight.y == heights.width()) {
-				--bottomRight.y;
-			}
-		}
-
-		void addNeighbours(const Vector2Int &pos, float minHeight, float dist) {
-			static float diagDist = sqrtf(2.0f);
-			setBounds(pos);
-			for (int y = topLeft.y; y <= bottomRight.y; ++y) {
-				for (int x = topLeft.x; x <= bottomRight.x; ++x) {
-					if ((x == pos.x && y == pos.y) || (heights(x, y) < heights.seaLevel())){
-						continue;
-					}
-					float cost = x != pos.x && y != pos.y ? diagDist : 1.0f;
-					cost += dist;
-					Vector2Int v2(x, y);
-					auto i = visited.find(v2);
-					if (i != visited.end()/* && i->second <= dist*/) {
-						continue;
-					}
-					fringe.emplace(v2, cost, minHeight);
-					visited.emplace(v2, cost);
-				}
-			}
-		}
-
-		void smooth(const Vector2Int &pos) {
-			Vector2Int topLeft, bottomRight;
-			heights.assignNeighbourBounds(pos.x, pos.y, topLeft, bottomRight);
-			float total = 0.0f, count = 0;
-			for (int y = topLeft.y; y <= bottomRight.y; ++y) {
-				for (int x = topLeft.x; x <= bottomRight.x; ++x) {
-					total += heights(x, y);
-					++count;
-				}
-			}
-			heights(pos.x, pos.y) = total / static_cast<float>(count);
-		}
-
-		void smoothNeighbours(const Vector2Int &pos) {
-			setBounds(pos);
-			for (int y = topLeft.y; y <= bottomRight.y; ++y) {
-				for (int x = topLeft.x; x <= bottomRight.x; ++x) {
-					Vector2Int next(x, y);
-					if (visited.find(next) == visited.end()) {
-						smooth(next);
-					}
-				}
-			}
-		}
-
-		void operator()(const QuantisedRiver &river) {
-			static float maxDist = MAX_RIVER_DEPTH + RIVER_STRETCH * 2.0f + 1.0f;
-			for (const QuantisedRiverNode &node : river) {
-				visited.emplace(Vector2Int(node.x, node.y), 0.0f);
-			}
-			for (const QuantisedRiverNode &node : river) {
-				float minHeight = heights(node.x, node.y);
-				addNeighbours(Vector2Int(node.x, node.y), minHeight, 0.0f);
-			}
-			while (!fringe.empty()) {
-				Fringe cur = fringe.top();
-				fringe.pop();
-				float &height = heights(cur.pos.x, cur.pos.y);
-				if (height < cur.minHeight) {
-					height = cur.minHeight;
-				}
-				if (cur.dist < maxDist) {
-					addNeighbours(cur.pos, cur.minHeight, cur.dist);
-				}
-				else {
-					smoothNeighbours(cur.pos);
-				}
-			}
 		}
 	};
 
@@ -816,18 +630,15 @@ namespace {
 		void smooth() {
 			std::vector<Vector3> adjusted(vertices);
 			static float third = 1.0f / 3.0f;
-			int last = leftVerts.size() - 1;
+			int last = static_cast<int>(leftVerts.size()) - 1;
 			for (int i = 1; i < last; ++i) {
 				adjusted[leftVerts[i]] = (vertices[leftVerts[i - 1]] + vertices[leftVerts[i]] + vertices[leftVerts[i + 1]]) * third;
 			}
-			last = rightVerts.size() - 1;
+			last = static_cast<int>(rightVerts.size()) - 1;
 			for (int i = 1; i < last; ++i) {
 				adjusted[rightVerts[i]] = (vertices[rightVerts[i - 1]] + vertices[rightVerts[i]] + vertices[rightVerts[i + 1]]) * third;
 			}
 			vertices = adjusted;
-			/*if (checkForInf()) {
-				exit(-1);
-			}*/
 			stretchMesh(leftVerts, 1.0f);
 			stretchMesh(rightVerts, -1.0f);
 		}
@@ -952,7 +763,12 @@ namespace {
 			for (int i = 0; i != mesh.vertices.size(); ++i) {
 				mesh.normals.emplace_back(0.0f, 0.0f, 1.0f);
 			}
-			mesh.slice(BoundingBox(0.0f, 0.0f, grid.seaLevel(), grid.width(), grid.height(), grid.width()), sliced);
+			mesh.slice(BoundingBox(
+				0.0f, 0.0f, grid.seaLevel(),
+				static_cast<float>(grid.width()),
+				static_cast<float>(grid.height()),
+				static_cast<float>(grid.width()))
+				, sliced);
 			sliced.uv.reserve(sliced.vertices.size());
 			for (int i = 0, j = static_cast<int>(sliced.vertices.size()); i != j; ++i) {
 				auto k = lookup.find(sliced.vertices[i]);
@@ -1008,7 +824,12 @@ namespace {
 				const Vector3 &a = vertices[side[i - 1]], &b = vertices[side[i]];
 				Clamper clamper(grid, std::max(a.z, b.z));
 				Bresenham<Clamper> bresenham(clamper);
-				bresenham(a.x, a.y, b.x, b.y);
+				bresenham(
+					static_cast<int>(a.x),
+					static_cast<int>(a.y),
+					static_cast<int>(b.x),
+					static_cast<int>(b.y)
+				);
 			}
 		}
 
@@ -1017,13 +838,105 @@ namespace {
 			clampEdges(rightVerts);
 		}
 	};
+
+	struct SeaFinder {
+		typedef Vector2Int NodeType;
+		typedef float CostType;
+		typedef std::vector<Vector2Int> NeighboursType;
+
+		NeighboursType mNeighbours;
+		const HeightMap &heightMap;
+		const Grid<bool> &seaMap;
+		std::unordered_set<Vector2Int, Hasher<Vector2Int>> mVisited;
+
+		SeaFinder(const HeightMap &heightMap, const Grid<bool> &seaMap) : heightMap(heightMap), seaMap(seaMap) {
+			mNeighbours.reserve(8);
+		}
+
+		void clear() {
+			mVisited.clear();
+		}
+
+		void visit(const Vector2Int &pos) {
+			mVisited.insert(pos);
+		}
+
+		bool visited(const Vector2Int &pos) const{
+			return mVisited.find(pos) != mVisited.end();
+		}
+
+		bool goal(const Vector2Int &pos) const {
+			return seaMap(pos.x, pos.y);
+		}
+
+		float hueristic(const Vector2Int &coord) {
+			return heightMap(coord.x, coord.y);
+		}
+
+		const NeighboursType &neighbours(const Vector2Int &coord) {
+			mNeighbours.clear();
+			int fromX = coord.x == 0 ? 0 : coord.x - 1, fromY = coord.y == 0 ? 0 : coord.y - 1;
+			int toX = coord.x + 1, toY = coord.y + 1;
+			if (toX == heightMap.width()) {
+				--toX;
+			}
+			if (toY == heightMap.height()) {
+				--toY;
+			}
+			while (fromY <= toY) {
+				for (int x = fromX; x <= toX; ++x) {
+					if (x == coord.x && fromY == coord.y) {
+						continue;
+					}
+					mNeighbours.emplace_back(x, fromY);
+				}
+				++fromY;
+			}
+			return mNeighbours;
+		}
+	};
 }
 
-QuantisedRiver &motu::quantiseRiver(const Grid<float> &grid, const Island::VertexList &list, QuantisedRiver &out) {
-	Coords last(list.front().vertex, grid, list.front().flow);
+void RiverQuantiser::populateSeaMap() {
+	int width = heightMap.width(), height = heightMap.height();
+	int size = width * height;
+	std::fill(seaMap.data(), seaMap.data() + size, false);
+	for (int i = 0; i != width; ++i) {
+		seaMap(i, 0) = true;
+		seaMap(i, height - 1) = true;
+	}
+	for (int i = 0; i != height; ++i) {
+		seaMap(0, i) = true;
+		seaMap(width - 1, i) = true;
+	}
+	std::vector<Vector2Int> fringe;
+	fringe.reserve(size);
+	fringe.emplace_back(1, 1);
+	seaMap(1, 1) = true;
+	int seaCount = ((width + height) << 1) + 1;
+	while (!fringe.empty()) {
+		Vector2Int current = fringe.back();
+		fringe.pop_back();
+		for (int x = current.x - 1; x != current.x + 3; x += 2) {
+			if (heightMap(x, current.y) < heightMap.seaLevel() && !seaMap(x, current.y)) {
+				seaMap(x, current.y) = true;
+				fringe.emplace_back(x, current.y);
+			}
+		}
+		for (int y = current.y - 1; y != current.y + 3; y += 2) {
+			if (heightMap(current.x, y) < heightMap.seaLevel() && !seaMap(current.x, y)) {
+				seaMap(current.x, y) = true;
+				fringe.emplace_back(current.x, y);
+			}
+		}
+	}
+}
+
+QuantisedRiver &RiverQuantiser::quantiseRiver(const Island::VertexList &list, QuantisedRiver &out) {
+	Coords last(list.front().vertex, heightMap, list.front().flow);
 	Bresenham<Setter> bresenham(out);
 	for (size_t i = 1; i < list.size(); ++i) {
-		Coords current(list[i].vertex, grid, list[i].flow);
+		Coords current(list[i].vertex, heightMap, list[i].flow);
 		bresenham.setter.lastFlow = list[i].flow;
 		bresenham(last.x, last.y, current.x, current.y);
 		//out.pop_back();
@@ -1032,6 +945,16 @@ QuantisedRiver &motu::quantiseRiver(const Grid<float> &grid, const Island::Verte
 	if (!out.empty()) {
 		out.pop_back();
 		out.emplace_back(last.x, last.y, last.flow);
+		if (!seaMap(last.x, last.y)) {
+			std::vector<Vector2Int> path;
+			SeaFinder seaFinder(heightMap, seaMap);
+			AStar<SeaFinder> astar(seaFinder);
+			astar.search(Vector2Int(last.x, last.y), path);
+			for (size_t i = 1; i < path.size(); ++i) {
+				const Vector2Int &v2 = path[i];
+				out.emplace_back(v2.x, v2.y, last.flow);
+			}
+		}
 	}
 	return out;
 }
@@ -1094,27 +1017,14 @@ MeshWithUV &motu::createQuantisedRiverMesh(HeightMap &grid, const QuantisedRiver
 		}
 		last = current;
 	}
-	/*if (mc.checkForInf()) {
-		exit(-1);
-	}*/
 	mc.smooth();
-	/*if (mc.checkForInf()) {
-		exit(-1);
-	}*/
 	mc.smoothRiverBed();
-	/*if (mc.checkForInf()) {
-		exit(-1);
-	}*/
 	mc.ensureDownness(path);
-	/*if (mc.checkForInf()) {
-		exit(-1);
-	}*/
-	//mc.clampEdges();
 	return mc.copyToMesh(mesh);
 }
 
 void motu::dedupeQuantisedRivers(HeightMap &grid, std::vector<QuantisedRiver*> &rivers, std::vector<int> &flowIntos) {
-	LocalMinimaEnforcer enforce(grid);
+	//LocalMinimaEnforcer enforce(grid);
 	flowIntos.insert(flowIntos.begin(), rivers.size(), -1);
 	SteepSectionStripper stripper(grid);
 	std::sort(rivers.begin(), rivers.end(), [&grid](const QuantisedRiver *a, const QuantisedRiver *b) {
@@ -1143,12 +1053,12 @@ void motu::dedupeQuantisedRivers(HeightMap &grid, std::vector<QuantisedRiver*> &
 	}
 	stripper(rivers, flowIntos);
 	//flattenRiverJoins(grid, rivers, flowIntos);
-	for (QuantisedRiver *river : rivers) {
+	/*for (QuantisedRiver *river : rivers) {
 		if (!river->empty()) {
 			enforce.clear();
 			enforce(*river);
 		}
-	}
+	}*/
 }
 
 void motu::joinQuantisedRiverMeshes(HeightMap &hm, MeshWithUV &from, MeshWithUV &to) {

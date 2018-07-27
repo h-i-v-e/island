@@ -131,7 +131,9 @@ extern "C" {
 
 	EXPORT_TO_UNITY ExportHeightMap* CreateSoilRichnessMap(void *, int resolution);
 
-	EXPORT_TO_UNITY void ReleaseSoilRichnessMap(ExportHeightMap *);
+	EXPORT_TO_UNITY ExportHeightMap* CreateForestMap(void *, int resolution);
+
+	EXPORT_TO_UNITY void ReleaseFoliageMap(ExportHeightMap *);
 }
 
 #endif
