@@ -779,7 +779,7 @@ namespace {
 					sliced.uv.push_back(mesh.uv[k->second]);
 				}
 			}
-			return mesh;
+			return sliced;
 		}
 
 		float getSlope(const Vector2 &a, const Vector2 &b) {
@@ -893,6 +893,10 @@ namespace {
 				++fromY;
 			}
 			return mNeighbours;
+		}
+
+		float stepCost() {
+			return std::numeric_limits<float>::min();
 		}
 	};
 }

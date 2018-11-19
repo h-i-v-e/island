@@ -8,6 +8,8 @@
 #include "mesh_triangle_map.h"
 #include "mesh_edge_map.h"
 #include "river_quantizer.h"
+#include "pipe_erosian.h"
+#include "normal_map_compressor.h"
 
 
 using namespace motu;
@@ -44,6 +46,17 @@ namespace {
 		}
 		buf.rasterize(out);
 		return out;
+	}
+
+	inline uint32_t clamp(float in) {
+		float out = in * 255.0f;
+		if (out > 255.0f) {
+			return 255;
+		}
+		if (out < 0.0f) {
+			return 0.0f;
+		}
+		return static_cast<uint32_t>(out);
 	}
 }
 
@@ -83,9 +96,12 @@ ExportHeightMapWithSeaLevel *CreateHeightMap(void *motu, int resolution) {
 	island->lod(0).slice(BoundingBox(Vector3(0.0f, 0.0f, -0.02f), Vector3(1.0f, 1.0f, 1.0f)), mesh);
 	HeightMap *hm = new HeightMap(resolution, resolution);
 	hm->load(mesh);
-	for (int i = 0; i != 8; ++i) {
-		hm->smooth();
-	}
+	//hm->fixHoles();
+	//for (int i = 0; i != 4; ++i) {
+		//hm->smooth();
+	//}
+	/*std::default_random_engine rd;
+	PipeErosian(rd, *hm).erode();*/
 	return reinterpret_cast<ExportHeightMapWithSeaLevel*>(hm);
 }
 
@@ -220,6 +236,7 @@ void GetDecoration(void *motu, ExportDecoration *exp) {
 	ExportVector2Vector(decoration.bigRocks, exp->bigRocks);
 	ExportVector2Vector(decoration.mediumRocks, exp->mediumRocks);
 	ExportVector2Vector(decoration.smallRocks, exp->smallRocks);
+	ExportVector2Vector(decoration.forestScatter, exp->forestScatter);
 }
 
 ExportHeightMap* CreateSoilRichnessMap(void *motu, int resolution) {
@@ -239,3 +256,96 @@ ExportHeightMap* CreateForestMap(void *motu, int resolution) {
 void ReleaseFoliageMap(ExportHeightMap *ehm) {
 	delete reinterpret_cast<Grid<float>*>(ehm);
 }
+
+uint32_t *ExportFoliageData(void *motu, int dimension) {
+	uint32_t *output = new uint32_t[dimension * dimension];
+	const Island *island = reinterpret_cast<Island*>(motu);
+	Mesh buffer;
+	Grid<float> grid(dimension, dimension);
+	buffer = island->decoration().mesh;
+	for (size_t i = 0; i != buffer.vertices.size(); ++i) {
+		buffer.vertices[i].z = island->decoration().soilRichness[i];
+	}
+	buffer.rasterize(grid);
+	for (int i = 0, j = grid.length(); i != j; ++i) {
+		output[i] = clamp(grid.data()[i]) << 24;
+	}
+	std::fill(grid.data(), grid.data() + grid.length(), 0.0f);
+	for (size_t i = 0; i != buffer.vertices.size(); ++i) {
+		buffer.vertices[i].z = island->decoration().forest[i];
+	}
+	buffer.rasterize(grid);
+	for (int i = 0, j = grid.length(); i != j; ++i) {
+		output[i] |= clamp(grid.data()[i]) << 16;
+	}
+	return output;
+}
+
+void ReleaseFoliageData(uint32_t *data) {
+	delete[] data;
+}
+
+uint8_t *CreateNormalMap3DC(void *motu, int lod, int dimension) {
+	/*Island::Image nao(dimension, dimension);
+	const Island *island = reinterpret_cast<Island*>(motu);
+	island->generateNormalMap(lod, nao);
+	const uint8_t *in = reinterpret_cast<uint8_t *>(nao.data());
+	uint8_t *output = new uint8_t[dimension * dimension];
+	int length;
+	CompressNormalMap3Dc(in, output, dimension, dimension, length);
+	return output;*/
+	return nullptr;
+}
+
+void ReleaseNormalMap3DC(uint8_t *data) {
+	//delete[] data;
+}
+
+uint8_t *CreateNormalMap(void *motu, int lod, int dimension) {
+	Island::Image24 nao(dimension, dimension);
+	const Island *island = reinterpret_cast<Island*>(motu);
+	island->generateNormalMap(lod, nao);
+	return reinterpret_cast<uint8_t*>(nao.detach());
+}
+
+void ReleaseNormalMap(uint8_t *data) {
+	delete[] reinterpret_cast<Colour24*>(data);
+}
+
+float* CreateSeaDepthMap(void *ptr, int dimension) {
+	size_t len = dimension * dimension;
+	Island *island = reinterpret_cast<Island*>(ptr);
+	HeightMap hm(dimension, dimension);
+	Mesh buffer;
+	int lod;
+	if (dimension <= 1024) {
+		lod = dimension <= 256 ? 2 : 1;
+	}
+	else {
+		lod = 0;
+	}
+	island->lod(lod).slice(BoundingBox(0.0f, 0.0f, -25.5f / Island::size(), 1.0f, 1.0f, 1.0f), buffer);
+	for (Vector3 &vec : buffer.vertices) {
+		if (vec.z > 0.0f) {
+			vec.z = 0.0f;
+		}
+	}
+	hm.load(buffer);
+	hm.normalise();
+	return hm.detach();
+}
+
+void ReleaseSeaDepthMap(float *ptr) {
+	delete[] ptr;
+}
+
+/*uint32_t *CreateNormalAndOcclusianMap(void *motu, int lod, int dimension) {
+	Island::Image nao(dimension, dimension);
+	const Island *island = reinterpret_cast<Island*>(motu);
+	island->generateNormalAndOcclusianMap(nao);
+	return nao.detach();
+}
+
+void ReleaseNormalAndOcclusianMap(uint32_t *ptr) {
+	delete[] ptr;
+}*/

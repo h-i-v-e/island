@@ -5,29 +5,6 @@
 using namespace motu;
 
 namespace {
-	template <class GetMaxHeight>
-	float LoadHeightMap(HeightMap &heightMap, const Mesh &mesh, GetMaxHeight getMaxHeight) {
-		float max = std::numeric_limits<float>::min(), min = std::numeric_limits<float>::max();
-		for (const Vector3 &vert : mesh.vertices) {
-			if (vert.z < min) {
-				min = vert.z;
-			}
-			if (vert.z > max) {
-				max = vert.z;
-			}
-		}
-		float mul = getMaxHeight(min, max) / max - min;
-		size_t length = heightMap.width() * heightMap.height();
-		const float *end = heightMap.data() + length;
-		for (float *i = heightMap.data(); i != end; ++i) {
-			*i = min;
-		}
-		mesh.rasterize(heightMap);
-		for (float *i = heightMap.data(); i != end; ++i) {
-			*i = (*i - min) * mul;
-		}
-		return min * -mul;
-	}
 
 	float interpTrBl(const HeightMap &hm, float x, float y) {
 		Vector2Int tr(x, y);
@@ -81,22 +58,32 @@ namespace {
 	}
 }
 
-void HeightMap::load(const Mesh &mesh, float maxHeight) {
-	mSeaLevel = LoadHeightMap(*this, mesh, [maxHeight](float min, float max) {
-		return maxHeight;
-	});
-}
-
 void HeightMap::load(const Mesh &mesh) {
-	mSeaLevel = LoadHeightMap(*this, mesh, [](float min, float max) {
-		return max - min;
-	});
+	float max = std::numeric_limits<float>::min(), min = std::numeric_limits<float>::max();
+	for (const Vector3 &vert : mesh.vertices) {
+		if (vert.z < min) {
+			min = vert.z;
+		}
+		if (vert.z > max) {
+			max = vert.z;
+		}
+	}
+	size_t length = width() * height();
+	const float *end = data() + length;
+	for (float *i = data(); i != end; ++i) {
+		*i = min;
+	}
+	mesh.rasterize(*this);
+	for (float *i = data(); i != end; ++i) {
+		*i -= min;
+	}
+	mSeaLevel = -min;
 }
 
 
 void HeightMap::smooth() {
-	static float diagWeight = 1.0f / sqrtf(2.0f);
-	static float mul = 1.0f / ((diagWeight * 4.0f) + 5.0f);
+	//static float diagWeight = 1.0f / sqrtf(2.0f);
+	//static float mul = 1.0f / ((diagWeight * 4.0f) + 5.0f);
 	Grid<float> buffer(width(), height());
 	for (int y = 1, hLast = height() - 1, xLast = width() - 1; y < hLast; ++y) {
 		for (int x = 1; x < xLast; ++x) {
@@ -105,7 +92,11 @@ void HeightMap::smooth() {
 				buffer(x, y) = total;
 				continue;
 			}
-			total += operator()(x - 1, y - 1) * diagWeight;
+			total += operator()(x - 1, y);
+			total += operator()(x + 1, y);
+			total += operator()(x, y - 1);
+			total += operator()(x, y + 1);
+			/*total += operator()(x - 1, y - 1) * diagWeight;
 			total += operator()(x, y - 1);
 			total += operator()(x + 1, y - 1) * diagWeight;
 			total += operator()(x - 1, y);
@@ -113,7 +104,8 @@ void HeightMap::smooth() {
 			total += operator()(x - 1, y + 1) * diagWeight;
 			total += operator()(x, y + 1);
 			total += operator()(x + 1, y + 1) * diagWeight;
-			buffer(x, y) = total * mul;
+			buffer(x, y) = total * mul;*/
+			buffer(x, y) = total * 0.2f;
 		}
 	}
 	std::copy(buffer.data(), buffer.data() + width() * height(), data());
@@ -203,4 +195,35 @@ void HeightMap::raise(const Vector3 &v3) {
 	}
 }
 
+void HeightMap::normalise() {
+	float min = std::numeric_limits<float>::max(), max = std::numeric_limits<float>::min();
+	for (auto i = mData, j = mData + length(); i != j; ++i) {
+		float val = *i;
+		if (val < min) {
+			min = val;
+		}
+		if (val > max) {
+			max = val;
+		}
+	}
+	float mul = 1.0f / (max - min);
+	for (auto *i = mData, *j = mData + length(); i != j; ++i) {
+		*i = (*i - min) * mul;
+	}
+}
 
+
+void HeightMap::fixHoles() {
+	for (int y = 0; y != mHeight; ++y) {
+		float lastHeight = operator()(0, y);
+		for (int x = 1; x != mWidth; ++x) {
+			float &current = operator()(x, y);
+			if (lastHeight - current > mSeaLevel) {
+				current = lastHeight;
+			}
+			else {
+				lastHeight = current;
+			}
+		}
+	}
+}

@@ -19,15 +19,11 @@ extern "C" {
 	};
 
 	struct MotuOptions {
-		float maxRiverGradient;
-		float riverDepth;
-		float riverSourceSDThreshold;
 		float maxZ;
 		float waterRatio;
 		float slopeMultiplier;
 		float coastalSlopeMultiplier;
 		float noiseMultiplier;
-		int erosianPasses;
 	};
 
 	struct Vector3ExportArray {
@@ -98,12 +94,20 @@ extern "C" {
 	};
 
 	struct ExportDecoration {
-		Vector2ExportArray trees, bushes, bigRocks, mediumRocks, smallRocks;
+		Vector2ExportArray trees, bushes, bigRocks, mediumRocks, smallRocks, forestScatter;
 	};
 
 	EXPORT_TO_UNITY void *CreateMotu(int seed, const MotuOptions *);
 
 	EXPORT_TO_UNITY void GetDecoration(void *, ExportDecoration *);
+
+	EXPORT_TO_UNITY uint8_t *CreateNormalMap3DC(void *, int lod, int dimension);
+
+	EXPORT_TO_UNITY void ReleaseNormalMap3DC(uint8_t *);
+
+	EXPORT_TO_UNITY uint8_t *CreateNormalMap(void *, int lod, int dimension);
+
+	EXPORT_TO_UNITY void ReleaseNormalMap(uint8_t *);
 
 	//EXPORT_TO_UNITY void FetchTextures(void *, ExportTextures *);
 
@@ -134,6 +138,14 @@ extern "C" {
 	EXPORT_TO_UNITY ExportHeightMap* CreateForestMap(void *, int resolution);
 
 	EXPORT_TO_UNITY void ReleaseFoliageMap(ExportHeightMap *);
+
+	EXPORT_TO_UNITY uint32_t *ExportFoliageData(void *, int dimension);
+
+	EXPORT_TO_UNITY void ReleaseFoliageData(uint32_t *);
+
+	EXPORT_TO_UNITY float* CreateSeaDepthMap(void *ptr, int dimension);
+
+	EXPORT_TO_UNITY void ReleaseSeaDepthMap(float *);
 }
 
 #endif

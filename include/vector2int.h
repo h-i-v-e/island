@@ -24,6 +24,10 @@ namespace motu {
 		bool operator!=(const Vector2Int &other) const {
 			return x != other.x && y != other.y;
 		}
+
+		friend Vector2Int operator+(const Vector2Int &a, const Vector2Int &b) {
+			return Vector2Int(a.x + b.x, a.y + b.y);
+		}
 	};
 }
 

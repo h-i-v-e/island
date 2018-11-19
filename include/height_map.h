@@ -17,11 +17,15 @@ namespace motu {
 			assign(y, topLeft.y, bottomRight.y, height());
 		}
 
-		void load(const Mesh &mesh, float maxHeight);
+		//void load(const Mesh &mesh, float maxHeight);
 
 		void load(const Mesh &mesh);
 
+		void normalise();
+
 		void smooth();
+
+		void fixHoles();
 
 		float interpTLBR(float x, float y);
 

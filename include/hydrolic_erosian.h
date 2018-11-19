@@ -3,6 +3,7 @@
 
 #include <unordered_set>
 #include <random>
+#include <unordered_set>
 
 #include "rivers.h"
 #include "lake.h"
@@ -12,9 +13,11 @@ namespace motu {
 	struct Mesh;
 	class MeshEdgeMap;
 
-	Mesh &applyHydrolicErosian(std::default_random_engine &rd, Decoration &decoration);
+	typedef std::unordered_set<int> RockSet;
 
-	Mesh &applyHydrolicErosian(Mesh &mesh);
+	Mesh &applyHydrolicErosian(std::default_random_engine &rd, const RockSet &rock, Decoration &decoration);
+
+	Mesh &applyHydrolicErosian(Mesh &mesh, const RockSet &rock, bool includeSea = false);
 }
 
 #endif

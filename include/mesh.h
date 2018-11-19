@@ -18,6 +18,7 @@
 #include "triangle3.h"
 #include "mesh_edge_map.h"
 #include "mesh_triangle_map.h"
+#include "mesh_tesselator.h"
 
 namespace motu{
 	struct BoundingBox;
@@ -84,6 +85,8 @@ namespace motu{
 
 		void smoothIfPositiveZ();
 
+		void smooth(const std::unordered_set<int> &exclude);
+
 		void rasterize(Grid<VertexAndNormal> &) const;
 
 		void rasterize(Grid<Vector3> &) const;
@@ -101,6 +104,10 @@ namespace motu{
 
 		Edges &edges(Edges &edges) const;
 
+		Triangle3 triangle(int offset) const{
+			return Triangle3(vertices[triangles[offset]], vertices[triangles[offset + 1]], vertices[triangles[offset + 2]]);
+		}
+
 		bool manifold() const {
 			Edges e;
 			edges(e);
@@ -109,6 +116,8 @@ namespace motu{
 		}
 
 		Mesh &slice(const BoundingBox &bounds, Mesh &out) const;
+
+		Mesh &sliceAndAddSkirts(const BoundingBox &bounds, Mesh &out) const;
 
 		enum Side {
 			TOP = 1,
@@ -119,11 +128,17 @@ namespace motu{
 
 		Mesh &slice(const BoundingBox &bounds, uint8_t sides, const Mesh &clampMesh, Mesh &out) const;
 
-		Mesh &tesselate();
+		Mesh &tesselate() {
+			return motu::tesselate(*this);
+		}
+
+		Mesh &tesselateIfPositiveZ() {
+			return motu::tesselate(*this, 0.0f);
+		}
 
 		//indices are the same a original triangles and values are offsets
 		//into tesselated vertices
-		void tesselateAndMapCentroids(std::vector<int> &centroids, Mesh &tesselated);
+		//void tesselateAndMapCentroids(std::vector<int> &centroids, Mesh &tesselated);
 
 		BoundingBox &getMaxSquare(BoundingBox &out) const;
 

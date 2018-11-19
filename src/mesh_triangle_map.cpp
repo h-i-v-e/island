@@ -7,18 +7,18 @@ MeshTriangleMap::MeshTriangleMap(const Mesh &mesh) {
 	vertices = new std::pair<int, int>[mesh.vertices.size()];
 	triangleBuffer = new int[mesh.triangles.size()];
 	memset(vertices, 0, mesh.vertices.size() * sizeof(std::pair<int, int>));
-	for (int i = 0; i < mesh.triangles.size(); ++i) {
+	for (size_t i = 0; i != mesh.triangles.size(); ++i) {
 		++vertices[mesh.triangles[i]].second;
 	}
 	int offset = 0;
-	for (int i = 0; i != mesh.vertices.size(); ++i) {
+	for (size_t i = 0; i != mesh.vertices.size(); ++i) {
 		vertices[i].first = offset;
 		offset += vertices[i].second;
 		vertices[i].second = vertices[i].first;
 	}
-	for (int i = 2; i < mesh.triangles.size(); i += 3) {
-		for (int j = -2; j != 1; ++j) {
-			triangleBuffer[vertices[mesh.triangles[i + j]].second++] = i - 2;
+	for (size_t i = 2; i < mesh.triangles.size(); i += 3) {
+		for (size_t j = -2; j != 1; ++j) {
+			triangleBuffer[vertices[mesh.triangles[i + j]].second++] = static_cast<int>(i - 2);
 		}
 	}
 }

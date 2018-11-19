@@ -17,7 +17,11 @@ set(sources
 	quantize_river.cpp
 	unity.cpp
 	decoration.cpp
-	face_erosian.cpp
+	pipe_erosian.cpp
+	mesh_tesselator.cpp
+	mesh_utils.cpp
+	texture_utils.cpp
+	normal_map_compressor.cpp
 )
 
 add_library(motu SHARED ${sources})

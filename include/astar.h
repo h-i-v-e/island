@@ -14,7 +14,7 @@ namespace motu {
 		Spec & spec;
 
 		struct Step {
-			int last;
+			int last, depth;
 			typename Spec::NodeType node;
 			typename Spec::CostType cost;
 
@@ -24,7 +24,7 @@ namespace motu {
 
 			Step() {}
 
-			Step(int last, typename Spec::NodeType node, typename Spec::CostType cost) : last(last), node(node), cost(cost) {}
+			Step(int last, int depth, typename Spec::NodeType node, typename Spec::CostType cost) : last(last), depth(depth), node(node), cost(cost) {}
 		};
 
 		std::priority_queue<Step> fringe;
@@ -48,12 +48,12 @@ namespace motu {
 
 		bool search(typename Spec::NodeType initialState, Path &path) {
 			spec.visit(initialState);
-			fringe.emplace(-1, initialState, spec.hueristic(initialState));
+			fringe.emplace(-1, 0, initialState, spec.hueristic(initialState));
 			for (;;) {
 				if (fringe.empty()) {
 					return false;
 				}
-				int last = static_cast<int>(steps.size());
+				int last = static_cast<int>(steps.size()), depth = fringe.top().depth + 1;
 				steps.push_back(fringe.top());
 				if (spec.goal(steps.back().node)) {
 					copyOutPath(path);
@@ -67,7 +67,7 @@ namespace motu {
 						continue;
 					}
 					spec.visit(next);
-					fringe.emplace(last, next, spec.hueristic(next));
+					fringe.emplace(last, depth, next, spec.hueristic(next) + static_cast<Spec::CostType>(depth) * spec.stepCost());
 				}
 			}
 		}

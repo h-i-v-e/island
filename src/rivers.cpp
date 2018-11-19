@@ -341,7 +341,7 @@ namespace {
 				if (visited[vert]) {
 					continue;
 				}
-				if (mesh.vertices[vert].z < 0.0f) {
+				if (mesh.vertices[vert].z < FLT_EPSILON) {
 					waiting.push(vert);
 					visited[vert] = true;
 				}
@@ -423,6 +423,72 @@ namespace {
 		out.triangles.push_back(b);
 		out.triangles.push_back(c);
 	}
+
+	void formDelta(int vertex, float sediment, Mesh &mesh, const MeshEdgeMap &mep) {
+		for (;;) {
+			sediment += mesh.vertices[vertex].z;
+			if (sediment <= 0.0f) {
+				mesh.vertices[vertex].z = sediment;
+				return;
+			}
+			mesh.vertices[vertex].z = 0.0f;
+			int shallowest = -1;
+			float depth = std::numeric_limits<float>::min();
+			for (auto i = mep.vertex(vertex); i.first != i.second; ++i.first) {
+				int vert = *i.first;
+				float d = mesh.vertices[vert].z;
+				if (d >= 0.0f) {
+					continue;
+				}
+				if (d > depth) {
+					depth = d;
+					shallowest = vert;
+				}
+			}
+			if (shallowest == -1) {
+				//mesh.vertices[vertex].z += sediment;
+				return;
+			}
+			vertex = shallowest;
+		}
+	}
+
+	void createDeltas(const Rivers::RiverList &rivers, std::vector<float> &sediments, Mesh &mesh) {
+		size_t verts = 0, size = rivers.size();
+		for (const River::Ptr &river : rivers) {
+			verts += river->vertices.size();
+		}
+		std::unordered_map<int, size_t> vertMap(verts);
+		for (size_t i = 0, j = size; i != j; ++i) {
+			const auto &vertices = rivers[i]->vertices;
+			for (size_t k = 0, l = vertices.size() - 1; k < l; ++k) {
+				vertMap.emplace(vertices[k].index, i);
+			}
+		}
+		for (bool modifying = true; modifying;) {
+			modifying = false;
+			for (size_t i = 0, j = size; i != j; ++i) {
+				float sediment = sediments[i];
+				if (sediment == 0.0f) {
+					continue;
+				}
+				auto k = vertMap.find(rivers[i]->vertices.back().index);
+				if (k != vertMap.end()) {
+					sediments[k->second] += sediment;
+					sediments[i] = 0.0f;
+					modifying = true;
+				}
+			}
+		}
+		const MeshEdgeMap &mep = mesh.edgeMap();
+		for (size_t i = 0, j = size; i != j; ++i) {
+			float sediment = sediments[i];
+			if (sediment == 0.0f) {
+				continue;
+			}
+			formDelta(rivers[i]->vertices.back().index, sediment, mesh, mep);
+		}
+	}
 }
 
 Rivers::Rivers(Mesh &mesh, float maxHeight, float flowSDthreshold) {
@@ -463,13 +529,14 @@ void Rivers::addaptToTesselation(const Mesh &old, const Mesh &tesselated) {
 	}
 }
 
-void Rivers::carveInto(Mesh &mesh, float maxGradient) const{
+void Rivers::carveInto(Mesh &mesh, bool formDeltas) const{
 	float invMaxHeight = 1.0f / maxHeight;
 	Rivers::RiverList copy(mRivers.begin(), mRivers.end());
 	std::sort(copy.begin(), copy.end(), [&mesh](const auto &a, const auto &b) {
 		return mesh.vertices[a->vertices.back().index].z < mesh.vertices[b->vertices.back().index].z;
 	});
 	std::vector<float> surfaces(mesh.vertices.size(), -1.0f);
+	std::vector<float> sediments(mRivers.size());
 	for (const auto &river : copy) {
 		float surface = -1.0f;
 		for (auto i = river->vertices.rbegin(); i != river->vertices.rend(); ++i) {
@@ -480,25 +547,34 @@ void Rivers::carveInto(Mesh &mesh, float maxGradient) const{
 			surfaces[i->index] = surface;
 		}
 	}
-	for (const auto &river : copy){
-		for (auto i = river->vertices.begin(); i != river->vertices.end(); ++i) {
+	for (size_t idx = 0, size = copy.size(); idx != size; ++idx) {
+		const River &river = *copy[idx];
+		float carved = 0.0f;
+		for (auto i = river.vertices.begin(); i != river.vertices.end(); ++i) {
 			float z = mesh.vertices[i->index].z, surface = surfaces[i->index];
 			float altMul = computeAltMul(maxHeight, mesh.vertices[i->index].z, invMaxHeight);
 			float target = altMul * sqrtf(static_cast<float>(i->flow)) * depthMultiplier;
 			float depth = surface - z;
 			if (depth < target) {
-				mesh.vertices[i->index].z -= (target - depth);
+				float carve = target - depth;
+				mesh.vertices[i->index].z -= carve;
+				carved += carve;
 			}
 			if (surface < z) {
+				carved += z - surface;
 				mesh.vertices[i->index].z = surface;
 			}
 		}
+		sediments[idx] = carved;
 	}
 	for (const auto &river : copy) {
 		for (auto i = river->vertices.begin(); i != river->vertices.end(); ++i) {
 			float altMul = computeAltMul(maxHeight, mesh.vertices[i->index].z, invMaxHeight);
 			i->surface = surfaces[i->index] - altMul * sqrtf(static_cast<float>(i->flow)) * depthMultiplier * 0.5f;
 		}
+	}
+	if (formDeltas) {
+		createDeltas(mRivers, sediments, mesh);
 	}
 }
 
@@ -538,6 +614,38 @@ void Rivers::smooth(Mesh &mesh) const{
 	for (const std::pair<int, Vector3> &i : altered) {
 		mesh.vertices[i.first] = i.second;
 	}
+	mesh.normals.clear();
+}
+
+void Rivers::jiggle(Mesh &mesh) const {
+	std::vector<std::pair<int, Vector3>> altered;
+	static float fmax = std::numeric_limits<float>::max();
+	MeshTriangleMap mtp(mesh);
+	for (const auto &river : mRivers) {
+		size_t len = river->vertices.size();
+		if (len < 2) {
+			continue;
+		}
+		const Vector3 *last = &mesh.vertices[river->vertices.front().index];
+		for (size_t i = 1; i != len; ++i) {
+			const auto &vert = river->vertices[i];
+			const Vector3 &current = mesh.vertices[vert.index];
+			float slope = ((*last - current).normalized().z) * 0.75f + 0.25f;
+			Vector3 lowestCentroid(fmax, fmax, fmax);
+			for (auto j = mtp.vertex(vert.index); j.first != j.second; ++j.first) {
+				Vector3 centroid = mesh.triangle(*j.first).baricentre();
+				if (centroid.z < lowestCentroid.z) {
+					lowestCentroid = centroid;
+				}
+			}
+			altered.emplace_back(vert.index, (current * slope) + (lowestCentroid * (1.0f - slope)));
+			last = &current;
+		}
+	}
+	for (const std::pair<int, Vector3> &i : altered) {
+		mesh.vertices[i.first] = i.second;
+	}
+	mesh.normals.clear();
 }
 
 Mesh &Rivers::getMesh(const River &river, const Mesh &mesh, Mesh &out) const{

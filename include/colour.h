@@ -18,6 +18,10 @@ namespace motu {
 		return static_cast<IntType>(out);
 	}
 
+	struct Colour24 {
+		uint8_t red, green, blue;
+	};
+
 	struct Colour {
 		float channels[4];
 
@@ -28,6 +32,14 @@ namespace motu {
 			channels[1] = green;
 			channels[2] = blue;
 			channels[3] = alpha;
+		}
+
+		Colour(const Colour24 colour) {
+			static float inv = 1.0f / 255.0f;
+			channels[0] = colour.red * inv;
+			channels[1] = colour.green * inv;
+			channels[2] = colour.blue * inv;
+			channels[3] = 1.0f;
 		}
 
 		Colour operator + (const Colour &other) const{

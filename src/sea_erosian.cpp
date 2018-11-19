@@ -1,12 +1,16 @@
 #include "sea_erosian.h"
 #include "mesh_edge_map.h"
 #include "mesh_triangle_map.h"
-#include "mesh.h"
+#include "mesh_utils.h"
 #include "decoration.h"
 
 #include <memory>
 #include <limits>
 #include <functional>
+
+#ifndef MOTU_BEACH_HEIGHT
+#define MOTU_BEACH_HEIGHT 0.0002
+#endif
 
 using namespace motu;
 
@@ -16,6 +20,10 @@ namespace {
 		std::vector<bool> visited;
 
 		CoastMapper(const Mesh &mesh) : mesh(&mesh), visited(mesh.vertices.size(), false){
+		}
+
+		void clear() {
+			std::fill(visited.begin(), visited.end(), false);
 		}
 
 		bool onCoast(int offset) const{
@@ -212,6 +220,32 @@ namespace {
 		}
 	}
 
+	int findHighestNeighbour(Mesh &mesh, int offset) {
+		float highest = mesh.vertices[offset].z;
+		int idx = -1;
+		for (auto n = mesh.edgeMap().vertex(offset); n.first != n.second; ++n.first) {
+			float z = mesh.vertices[*n.first].z;
+			if (z > highest) {
+				highest = z;
+				idx = *n.first;
+			}
+		}
+		return idx;
+	}
+
+	int findLowestNeighbour(Mesh &mesh, int offset) {
+		float lowest = mesh.vertices[offset].z;
+		int idx = -1;
+		for (auto n = mesh.edgeMap().vertex(offset); n.first != n.second; ++n.first) {
+			float z = mesh.vertices[*n.first].z;
+			if (z < lowest) {
+				lowest = z;
+				idx = *n.first;
+			}
+		}
+		return idx;
+	}
+
 	float findLowestNeighbourZ(Mesh &mesh, int offset) {
 		float lowest = mesh.vertices[offset].z;
 		for (auto n = mesh.edgeMap().vertex(offset); n.first != n.second; ++n.first) {
@@ -226,6 +260,24 @@ namespace {
 	float GetRockChance(const Mesh &mesh, int offset) {
 		return (1.0f - mesh.normals[offset].dot(Vector3::unitZ()));
 	}
+
+	void forceMinimumDepth(Mesh &mesh, float depth) {
+		for (Vector3 &vert : mesh.vertices) {
+			if (vert.z < 0.0f && vert.z > depth) {
+				vert.z = depth;
+			}
+		}
+	}
+
+	struct IsSea {
+		const Mesh &mesh;
+
+		IsSea(const Mesh &mesh) : mesh(mesh){}
+
+		bool operator()(int i) const {
+			return mesh.vertices[i].z >= 0.0f;
+		}
+	};
 }
 
 void motu::mapCoastlines(const Mesh &mesh, Coastlines &coastlines) {
@@ -235,17 +287,28 @@ void motu::mapCoastlines(const Mesh &mesh, Coastlines &coastlines) {
 	});
 }
 
-void motu::improveCliffs(Mesh &mesh) {
+void motu::improveCliffs(Mesh &mesh, std::unordered_set<int> &cliffs) {
 	Coastlines coastlines;
 	mapCoastlines(mesh, coastlines);
 	for (const auto &i : coastlines) {
 		for (auto j : *i) {
 			if (j.second != -1) {
-				Vector3 shift = mesh.vertices[j.first] - mesh.vertices[j.second];
+				/*Vector3 shift = mesh.vertices[j.first] - mesh.vertices[j.second];
 				shift.z = 0.0f;
 				shift *= 0.95;
 				mesh.vertices[j.second] += shift;
-				mesh.vertices[j.first].z = 0.0f;
+				mesh.vertices[j.first].z = mesh.vertices;*/
+				int idx = findLowestNeighbour(mesh, j.first);
+				if (idx != -1) {
+					Vector3 shift = mesh.vertices[j.first] - mesh.vertices[idx];
+					shift.z = 0.0f;
+					shift *= 0.95f;
+					mesh.vertices[j.first] += shift;
+					mesh.vertices[j.first].z = mesh.vertices[j.second].z;
+					cliffs.insert(j.first);
+					cliffs.insert(j.second);
+					cliffs.insert(idx);
+				}
 			}
 		}
 	}
@@ -271,23 +334,52 @@ void motu::applySeaErosian(Mesh &mesh, float strength) {
 	}
 }
 
-void motu::eatCoastlines(Mesh &mesh) {
+void motu::eatCoastlines(Mesh &mesh, int steps) {
 	Coastlines coastlines;
 	CoastMapper coastMapper(mesh);
-	coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &section) {
-		coastMapper.followCoastWithSeaJoins(offset, section);
-	});
-	for (auto i = coastlines.begin(); i != coastlines.end(); ++i) {
-		for (auto j = (*i)->begin(); j != (*i)->end(); ++j) {
-			if (j->second != -1) {
-				if (mesh.vertices[j->second].z >= 0.0f) {
-					exit(1);
+	for (;;) {
+		coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &section) {
+			coastMapper.followCoastWithSeaJoins(offset, section);
+		});
+		for (auto i = coastlines.begin(); i != coastlines.end(); ++i) {
+			for (auto j = (*i)->begin(); j != (*i)->end(); ++j) {
+				if (j->second != -1) {
+					/*if (mesh.vertices[j->second].z >= 0.0f) {
+						exit(1);
+					}*/
+					//mesh.vertices[j->first].z = mesh.vertices[j->second].z;
+					float z = findLowestNeighbourZ(mesh, j->second);
+					mesh.vertices[j->first].z = z;
+					mesh.vertices[j->second].z = z;
 				}
-				//mesh.vertices[j->first].z = mesh.vertices[j->second].z;
-				float z = findLowestNeighbourZ(mesh, j->second);
-				mesh.vertices[j->first].z = z;
-				mesh.vertices[j->second].z = z;
 			}
+		}
+		if (--steps > 0) {
+			coastMapper.clear();
+			coastlines.clear();
+		}
+		else {
+			std::vector<float> distance(mesh.vertices.size(), std::numeric_limits<float>::max());
+			float max = computeDistance(IsSea(mesh), mesh, mesh.edgeMap(), distance);
+			std::cout << "Max distance: " << max << std::endl;
+			float min = 0.0f;
+			for (const Vector3 &vec : mesh.vertices) {
+				float val = vec.z;
+				if (val < min) {
+					min = val;
+				}
+			}
+			std::cout << "Min: " << min << std::endl;
+			float stepSize = min / max;
+			std::cout << "Step: " << stepSize << std::endl;
+			for (size_t i = 0, j = mesh.vertices.size(); i != j; ++i) {
+				float dist = distance[i];
+				if (dist > 0.0f) {
+					mesh.vertices[i].z = dist * stepSize;
+				}
+			}
+			mesh.dirty();
+			return;
 		}
 	}
 }
@@ -310,21 +402,41 @@ void motu::formBeaches(Mesh &mesh) {
 	Coastlines coastlines;
 	CoastMapper coastMapper(mesh);
 	coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &section) {
-		coastMapper.followCoastWithSeaCount(offset, section);
+		coastMapper.followCoastWithSeaJoins(offset, section);
 	});
 	const MeshEdgeMap &mep = mesh.edgeMap();
 	for (const auto &i : coastlines) {
 		for (const auto &j : *i) {
-			if (j.second < 0) {
-				float z = smooth(mesh, j.first);
-				mesh.vertices[j.first].z = z;
-				for (auto v = mep.vertex(j.first); v.first != v.second; ++v.first) {
-					int offset = *v.first;
-					if (!coastMapper.onCoast(offset)) {
-						mesh.vertices[offset].z = z;
+			if (j.second != -1) {
+				int idx = findHighestNeighbour(mesh, j.first);
+				if (idx == -1) {
+					continue;
+				}
+				float z = mesh.vertices[j.first].z;
+				mesh.vertices[idx].z = z;
+				mesh.vertices[j.first].z = (z + mesh.vertices[j.second].z) * 0.5f;
+			}
+		}
+	}
+	for (const auto &i : coastlines) {
+		for (const auto &j : *i) {
+			for (auto k = mep.vertex(j.first); k.first != k.second; ++k.first) {
+				Vector3 &vert = mesh.vertices[*k.first];
+				if (vert.z < 0.0f) {
+					vert.z = MOTU_BEACH_HEIGHT;
+				}
+			}
+		}
+	}
+	for (const auto &i : coastlines) {
+		for (const auto &j : *i) {
+			for (auto k = mep.vertex(j.first); k.first != k.second; ++k.first) {
+				for (auto l = mep.vertex(*k.first); l.first != l.second; ++l.first) {
+					Vector3 &vert = mesh.vertices[*l.first];
+					if (vert.z < 0.0f) {
+						vert.z = 0;
 					}
 				}
-				mesh.vertices[j.first].z = smooth(mesh, j.first);
 			}
 		}
 	}
@@ -334,7 +446,7 @@ void motu::placeCoastalRocks(std::default_random_engine &rd, Decoration &decorat
 	const MeshEdgeMap &mep = decoration.mesh.edgeMap();
 	Coastlines coastlines;
 	CoastMapper coastMapper(decoration.mesh);
-	std::unordered_set<int> rocked;
+	//std::unordered_set<int> rocked;
 	std::uniform_real_distribution<float> full(0.0f, 1.0f);
 	std::uniform_real_distribution<float> half(0.5f, 1.0f);
 	std::uniform_real_distribution<float> quarter(0.25f, 0.5f);
@@ -345,9 +457,10 @@ void motu::placeCoastalRocks(std::default_random_engine &rd, Decoration &decorat
 	for (const auto &i : coastlines) {
 		for (const auto &j : *i) {
 			if (j.second > 0) {
-				if (full(rd) < GetRockChance(decoration.mesh, j.first)) {
+				if (decoration.occupied.find(j.first) == decoration.occupied.end() && full(rd) < GetRockChance(decoration.mesh, j.first)) {
+					decoration.occupied.insert(j.first);
 					decoration.bigRocks.push_back(decoration.mesh.vertices[j.first].asVector2());
-					rocked.insert(j.first);
+					//rocked.insert(j.first);
 				}
 			}
 		}
@@ -360,7 +473,7 @@ void motu::placeCoastalRocks(std::default_random_engine &rd, Decoration &decorat
 				while (neighbours.first != neighbours.second) {
 					int offset = *neighbours.first++;
 					const Vector2 &neighbour = decoration.mesh.vertices[offset].asVector2();
-					if (rocked.find(offset) == rocked.end()) {
+					if (decoration.occupied.find(offset) == decoration.occupied.end()) {
 						if (full(rd) > GetRockChance(decoration.mesh, offset)) {
 							continue;
 						}
@@ -373,7 +486,7 @@ void motu::placeCoastalRocks(std::default_random_engine &rd, Decoration &decorat
 							shift *= quarter(rd);
 							decoration.mediumRocks.push_back(middle + shift);
 						}
-						rocked.insert(offset);
+						decoration.occupied.insert(offset);
 					}
 				}
 			}
@@ -389,10 +502,10 @@ void motu::placeCoastalRocks(std::default_random_engine &rd, Decoration &decorat
 					auto neighboursNeighbours = mep.vertex(offset);
 					while (neighboursNeighbours.first != neighboursNeighbours.second) {
 						offset = *neighboursNeighbours.first++;
-						if (rocked.find(offset) == rocked.end()) {
+						if (decoration.occupied.find(offset) == decoration.occupied.end()) {
 							const Vector2 &pos = decoration.mesh.vertices[offset].asVector2();
 							decoration.smallRocks.push_back(neighbour + ((pos - neighbour) * eigth(rd)));
-							rocked.insert(offset);
+							decoration.occupied.insert(offset);
 						}
 					}
 				}

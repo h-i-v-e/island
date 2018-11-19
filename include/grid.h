@@ -17,6 +17,12 @@ namespace motu{
         ValueType *mData;
     public:
         Grid(int width, int height) : mWidth(width), mHeight(height), mData(new ValueType[width * height]){}
+
+		ValueType *detach() {
+			ValueType *out = mData;
+			mData = nullptr;
+			return out;
+		}
         
         ~Grid(){
             delete [] mData;
@@ -48,6 +54,10 @@ namespace motu{
 
 		ValueType *data() {
 			return mData;
+		}
+
+		constexpr int length() const {
+			return mWidth * mHeight;
 		}
     };
 }

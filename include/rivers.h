@@ -45,7 +45,15 @@ namespace motu {
 
 		void smooth(Mesh &mesh) const;
 
-		void carveInto(Mesh &mesh, float maxGradient) const;
+		void smooth(Mesh &mesh, int iterations) const{
+			while (iterations--) {
+				smooth(mesh);
+			}
+		}
+
+		void jiggle(Mesh &mesh) const;
+
+		void carveInto(Mesh &mesh, bool formDeltas) const;
 
 		Mesh &getMesh(const River &, const Mesh &, Mesh &) const;
 	private:

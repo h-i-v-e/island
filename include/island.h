@@ -1,10 +1,6 @@
 #ifndef ISLAND_H
 #define ISLAND_H
 
-#ifndef MOTU_TEXTURE_MAP_SIZE
-#define MOTU_TEXTURE_MAP_SIZE 2048
-#endif
-
 #include <random>
 
 #include "grid.h"
@@ -12,6 +8,7 @@
 #include "lake.h"
 #include "rivers.h"
 #include "decoration.h"
+#include "colour.h"
 
 namespace motu {
 
@@ -26,7 +23,8 @@ namespace motu {
 			RiverVertex() {}
 		};
 
-		typedef Grid<uint32_t> NormalAndOcclusianMap;
+		typedef Grid<uint32_t> Image;
+		typedef Grid<Colour24> Image24;
 		typedef Grid<Vector3> NormalMap;
 		typedef Grid<uint8_t> OcclusianMap;
 		typedef Grid<uint32_t> VegetationMap;
@@ -35,17 +33,13 @@ namespace motu {
 		typedef std::vector<std::shared_ptr<VertexList>> RiverVertexLists;
 
 		struct Options {
-			float maxRiverGradient;
-			float riverDepth;
-			float riverSourceSDThreshold;
 			float maxZ;
 			float waterRatio;
 			float slopeMultiplier;
 			float coastalSlopeMultiplier;
 			float noiseMultiplier;
-			int erosianPasses;
 
-			Options() : maxRiverGradient(0.05f), riverDepth(0.005f), riverSourceSDThreshold(3.0f), maxZ(0.2f), waterRatio(0.5f), slopeMultiplier(1.3f), coastalSlopeMultiplier(1.0f), noiseMultiplier(0.0005f), erosianPasses(16) {}
+			Options() : maxZ(0.2f), waterRatio(0.5f), slopeMultiplier(1.3f), coastalSlopeMultiplier(1.0f), noiseMultiplier(0.0005f) {}
 		};
 
 		Island(std::default_random_engine &rnd, const Options &options) : maxZ(options.maxZ){
@@ -56,21 +50,13 @@ namespace motu {
 			return lods[offset];
 		}
 
-		/*const Rivers &rivers() const {
-			return *mRivers;
-		}*/
-
 		const RiverMeshes &riverMeshes() const {
 			return mRiverMeshes;
 		}
 
-		void generateVegetationMap(VegetationMap &) const;
+		void generateNormalAndOcclusianMap(Image &) const;
 
-		void generateNormalAndOcclusianMap(NormalAndOcclusianMap &) const;
-
-		const Lake::Lakes lakes() const {
-			return mLakes;
-		}
+		void generateNormalMap(int lod, Image24 &) const;
 
 		const RiverVertexLists &riverVertexLists() const{
 			return mRiverVertexLists;
@@ -80,11 +66,13 @@ namespace motu {
 			return *mDecoration;
 		}
 
+		static constexpr float size() {
+			return 8192.0f;
+		}
+
 	private:
 		float maxZ, maxHeight;
 		Mesh lods[3];
-		Lake::Lakes mLakes;
-		//std::unique_ptr<Rivers> mRivers;
 		RiverMeshes mRiverMeshes;
 		RiverVertexLists mRiverVertexLists;
 		std::unique_ptr<Decoration> mDecoration;
