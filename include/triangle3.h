@@ -113,6 +113,37 @@ namespace motu{
 			return splines;
 		}
     };
+
+	struct Triangle3WithNormalsAndUV : public Triangle3WithNormals {
+		Vector2 uv[3];
+
+		Triangle3WithNormalsAndUV() {}
+
+		Triangle3WithNormalsAndUV(const Vector3 &a, const Vector3 &b, const Vector3 &c) : Triangle3WithNormals(a, b, c) {}
+
+		Triangle3WithNormalsAndUV(const Vector3 &a, const Vector3 &b, const Vector3 &c, const Vector3 &na, const Vector3 &nb, const Vector3 &nc) : Triangle3WithNormals(a, b, c, na, nb, nc) {}
+
+		Triangle3WithNormalsAndUV(
+			const Vector3 &a, const Vector3 &b, const Vector3 &c,
+			const Vector3 &na, const Vector3 &nb, const Vector3 &nc,
+			const Vector2 &uva, const Vector2 &uvb, const Vector2 &uvc
+		) : Triangle3WithNormals(a, b, c, na, nb, nc) {
+			uv[0] = uva;
+			uv[1] = uvb;
+			uv[2] = uvc;
+		}
+
+		Triangle3WithNormalsAndUV(const Triangle3WithNormals &verts) : Triangle3WithNormals(verts) {}
+
+		std::vector<Triangle3WithNormalsAndUV> &slice(const Plane &plane, std::vector<Triangle3WithNormalsAndUV> &out) const;
+
+		SplineWithNormalsAndUV *getSplines(SplineWithNormalsAndUV *splines) const {
+			splines[0] = SplineWithNormalsAndUV(vertices[0], vertices[1], normals[0], normals[1], uv[0], uv[1]);
+			splines[1] = SplineWithNormalsAndUV(vertices[1], vertices[2], normals[1], normals[2], uv[1], uv[2]);
+			splines[2] = SplineWithNormalsAndUV(vertices[2], vertices[0], normals[2], normals[0], uv[2], uv[0]);
+			return splines;
+		}
+	};
 }
 
 #endif /* triangle3_h */

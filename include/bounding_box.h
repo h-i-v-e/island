@@ -12,7 +12,9 @@ namespace motu {
 
 		Vector3 upper, lower;
 
-		BoundingBox() {}
+		BoundingBox() {
+			clear();
+		}
 
 		BoundingBox(const Vector3 &upper, const Vector3 &lower) : upper(upper), lower(lower) {}
 
@@ -47,6 +49,7 @@ namespace motu {
 			if (pt.z > lower.z) {
 				lower.z = pt.z;
 			}
+			return *this;
 		}
 
 		BoundingBox operator + (const BoundingBox &box) const {

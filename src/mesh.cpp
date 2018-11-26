@@ -27,10 +27,9 @@ using namespace motu;
 namespace{
 
 	template <class Exclude>
-	void Smooth(Mesh &mesh, Exclude exclude) {
+	void Smooth(Mesh &mesh, const MeshEdgeMap &edges, Exclude exclude) {
 		Mesh::PerimeterSet perimeter;
 		mesh.getPerimeterSet(perimeter);
-		const MeshEdgeMap &edges = mesh.edgeMap();
 		int size = static_cast<int>(mesh.vertices.size());
 		std::vector<Vector3> moved(size);
 		for (int i = 0; i != size; ++i) {
@@ -245,9 +244,9 @@ namespace{
 		};
 	};
 
-	void splitTriangles(const Plane &divider, std::vector<Triangle3WithNormals> &in, std::vector<Triangle3WithNormals> &out) {
-		//size_t i = out.size();
-		for (const Triangle3WithNormals &tri : in) {
+	template<class TriangleType>
+	void splitTriangles(const Plane &divider, std::vector<TriangleType> &in, std::vector<TriangleType> &out) {
+		for (const TriangleType &tri : in) {
 			tri.slice(divider, out);
 		}
 	}
@@ -269,6 +268,21 @@ namespace{
 			mesh.normals[a],
 			mesh.normals[b],
 			mesh.normals[c]
+		);
+	}
+
+	inline Triangle3WithNormalsAndUV getTriangle3WithNormalsAndUV(const MeshWithUV &mesh, int offset) {
+		int a = mesh.triangles[offset], b = mesh.triangles[offset + 1], c = mesh.triangles[offset + 2];
+		return Triangle3WithNormalsAndUV(
+			mesh.vertices[a],
+			mesh.vertices[b],
+			mesh.vertices[c],
+			mesh.normals[a],
+			mesh.normals[b],
+			mesh.normals[c],
+			mesh.uv[a],
+			mesh.uv[b],
+			mesh.uv[c]
 		);
 	}
 
@@ -342,8 +356,62 @@ namespace{
 			fillTriangle(raster, tri);
 		}
 	}
+
+	template<class MeshType, class GetTriangle, class TriangleSplitter>
+	MeshType &performSlice(const MeshType src, GetTriangle getTriangle, const BoundingBox &bounds, MeshType &out, TriangleSplitter splitter) {
+		std::vector<typename MeshType::TriangleType> inside, selection, split;
+		inside.reserve(src.triangles.size() / 3);
+		for (int i = 2; i < src.triangles.size(); i += 3) {
+			MeshType::TriangleType tri(getTriangle(src, i - 2));
+			if (bounds.intersects(tri)) {
+				if (bounds.contains(tri)) {
+					inside.push_back(tri);
+				}
+				else {
+					split.push_back(tri);
+				}
+			}
+		}
+		Plane planes[6];
+		bounds.getPlanes(planes);
+		for (int i = 0; i != 6; ++i) {
+			selection.clear();
+			for (const MeshType::TriangleType &tri : split) {
+				if (tri.intersects(planes[i])) {
+					selection.push_back(tri);
+				}
+			}
+			uint8_t side;
+			switch (i) {
+			case 0:
+				side = Mesh::RIGHT;
+				break;
+			case 1:
+				side = Mesh::BOTTOM;
+				break;
+			case 3:
+				side = Mesh::LEFT;
+				break;
+			case 4:
+				side = Mesh::TOP;
+				break;
+			default:
+				side = 0;
+			}
+			splitter(side, planes[i], selection, split);
+		}
+		for (const MeshType::TriangleType &tri : split) {
+			if (bounds.contains(tri)) {
+				inside.push_back(tri);
+			}
+		}
+		out.load(inside);
+		return out;
+	}
+
+
 	//right, bottom, skip, left, top, skip
-	template<class TriangleSplitter>
+	/*template<class TriangleSplitter>
 	Mesh &performSlice(const Mesh src, const BoundingBox &bounds, Mesh &out, TriangleSplitter splitter) {
 		std::vector<Triangle3WithNormals> inside, selection, split;
 		inside.reserve(src.triangles.size() / 3);
@@ -393,7 +461,7 @@ namespace{
 		}
 		out.load(inside);
 		return out;
-	}
+	}*/
 
 	struct MeshClamper {
 		Mesh clamp;
@@ -554,10 +622,36 @@ void Mesh::load(std::vector<Triangle3WithNormals> &tris) {
 	}
 }
 
-void Mesh::calculateNormals() {
+void MeshWithUV::load(std::vector<Triangle3WithNormalsAndUV> &tris) {
+	std::unordered_map<Vector3, int, Hasher<Vector3>> vertexMap;
+	int numVerts = static_cast<int>(tris.size()) + 2;
+	vertexMap.reserve(numVerts);
+	triangles.reserve(tris.size());
+	vertices.reserve(numVerts);
+	normals.reserve(numVerts);
+	uv.reserve(numVerts);
+	for (auto i = tris.begin(); i != tris.end(); ++i) {
+		for (int j = 0; j != 3; ++j) {
+			const Vector3 &vert = i->vertices[j];
+			auto k = vertexMap.find(vert);
+			if (k != vertexMap.end()) {
+				triangles.push_back(k->second);
+			}
+			else {
+				int pos = static_cast<int>(vertices.size());
+				vertices.push_back(vert);
+				normals.push_back(i->normals[j]);
+				uv.push_back(i->uv[j]);
+				triangles.push_back(pos);
+				vertexMap.emplace(vert, pos);
+			}
+		}
+	}
+}
+
+void Mesh::calculateNormals(const MeshTriangleMap &triMap) {
 	normals.clear();
 	normals.reserve(vertices.size());
-	MeshTriangleMap triMap(*this);
 	for (int i = 0; i != vertices.size(); ++i) {
 		Vector3 normal = Vector3::zero();
 		auto tris = triMap.vertex(i);
@@ -570,18 +664,18 @@ void Mesh::calculateNormals() {
 	}
 }
 
-void Mesh::smooth() {
-	Smooth(*this, [](const Mesh &mesh, int offset) {return false; });
+void Mesh::smooth(const MeshEdgeMap &mem) {
+	Smooth(*this, mem, [](const Mesh &mesh, int offset) {return false; });
 }
 
-void Mesh::smoothIfPositiveZ() {
-	Smooth(*this, [](const Mesh &mesh, int offset) {
+void Mesh::smoothIfPositiveZ(const MeshEdgeMap &mem) {
+	Smooth(*this, mem, [](const Mesh &mesh, int offset) {
 		return mesh.vertices[offset].z < 0.0f;
 	});
 }
 
-void Mesh::smooth(const std::unordered_set<int> &exclude) {
-	Smooth(*this, [&exclude](const Mesh &mesh, int offset) {
+void Mesh::smooth(const MeshEdgeMap &mem, const std::unordered_set<int> &exclude) {
+	Smooth(*this, mem, [&exclude](const Mesh &mesh, int offset) {
 		return exclude.find(offset) != exclude.end();
 	});
 }
@@ -620,14 +714,23 @@ Mesh::Edges &Mesh::edges(Edges &edges) const {
 }
 
 Mesh &Mesh::slice(const BoundingBox &bounds, Mesh &out) const {
-	performSlice(*this, bounds, out, [](uint8_t side, const Plane &divider, std::vector<Triangle3WithNormals> &in, std::vector<Triangle3WithNormals> &out) {
-		splitTriangles(divider, in, out);
-	});
+	performSlice(*this,
+		[](const Mesh &mesh, int triangle) {
+			return getTriangleWithNormals(mesh, triangle);
+		},
+		bounds, out,
+		[](uint8_t side, const Plane &divider, std::vector<Triangle3WithNormals> &in, std::vector<Triangle3WithNormals> &out) {
+			splitTriangles(divider, in, out);
+		}
+	);
 	return out;
 }
 
 Mesh &Mesh::sliceAndAddSkirts(const BoundingBox &bounds, Mesh &out) const {
-	performSlice(*this, bounds, out, [](uint8_t side, const Plane &divider, std::vector<Triangle3WithNormals> &in, std::vector<Triangle3WithNormals> &out) {
+	performSlice(*this,
+		[](const Mesh &mesh, int triangle) {
+		return getTriangleWithNormals(mesh, triangle);
+	}, bounds, out, [](uint8_t side, const Plane &divider, std::vector<Triangle3WithNormals> &in, std::vector<Triangle3WithNormals> &out) {
 		splitTriangles(divider, in, out);
 	});
 	return out;
@@ -637,7 +740,10 @@ Mesh &Mesh::slice(const BoundingBox &bounds, uint8_t clampDown, const Mesh &clam
 	MeshClamper clamper;
 	clamper.sides = clampDown;
 	clampMesh.slice(bounds, clamper.clamp);
-	performSlice(*this, bounds, out, [&clamper](uint8_t side,  Plane &divider, std::vector<Triangle3WithNormals> &in, std::vector<Triangle3WithNormals> &out) {
+	performSlice(*this,
+		[](const Mesh &mesh, int triangle) {
+		return getTriangleWithNormals(mesh, triangle);
+	}, bounds, out, [&clamper](uint8_t side,  Plane &divider, std::vector<Triangle3WithNormals> &in, std::vector<Triangle3WithNormals> &out) {
 		if (!(clamper.sides & side)) {
 			splitTriangles(divider, in, out);
 		}
@@ -679,4 +785,14 @@ Mesh::PerimeterSet &Mesh::getPerimeterSet(Mesh::PerimeterSet &perm) const {
 		perm.insert(op.second);
 	}
 	return perm;
+}
+
+MeshWithUV &MeshWithUV::slice(const BoundingBox &bounds, MeshWithUV &out) const {
+	performSlice(*this,
+		[](const MeshWithUV &mesh, int triangle) {
+		return getTriangle3WithNormalsAndUV(mesh, triangle);
+	}, bounds, out, [](uint8_t side, const Plane &divider, std::vector<Triangle3WithNormalsAndUV> &in, std::vector<Triangle3WithNormalsAndUV> &out) {
+		splitTriangles(divider, in, out);
+	});
+	return out;
 }

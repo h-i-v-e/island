@@ -14,17 +14,17 @@ namespace motu {
 
 	typedef std::vector<std::unique_ptr<std::vector<std::pair<int, int>>>> Coastlines;
 
-	void applySeaErosian(Mesh &mesh, float strength);
+	void applySeaErosian(Mesh &mesh, const MeshEdgeMap &, float strength);
 
-	void improveCliffs(Mesh &mesh, std::unordered_set<int> &cliffs);
+	void improveCliffs(Mesh &mesh, const MeshEdgeMap &, std::unordered_set<int> &cliffs);
 
-	void mapCoastlines(const Mesh &, Coastlines &);
+	void mapCoastlines(const Mesh &, const MeshEdgeMap &, Coastlines &);
 
-	void smoothCoastlines(Mesh &);
+	void smoothCoastlines(Mesh &, const MeshEdgeMap &);
 
-	void eatCoastlines(Mesh &, int steps);
+	void eatCoastlines(Mesh &, const MeshEdgeMap &, int steps);
 
-	void formBeaches(Mesh &);
+	void formBeaches(Mesh &, const MeshEdgeMap &);
 
 	void placeCoastalRocks(std::default_random_engine &, Decoration &decoration);
 }

@@ -222,85 +222,50 @@ inline float byteToFloat(uint32_t val, uint32_t shift) {
 TEST_CASE("unity", "unity") {
 	MotuOptions options;
 	options.coastalSlopeMultiplier = 2.0f;
-	//options.erosianPasses = 16;
-	//options.maxRiverGradient = 0.001f;
 	options.maxZ = 0.11f;
 	options.noiseMultiplier = 0.0005f;
-	//options.riverDepth = 0.002f;
-	//options.riverSourceSDThreshold = 1.0f;
-	options.slopeMultiplier = 1.1f;
-	options.waterRatio = 0.7f;
-	void *handle = CreateMotu(2010, &options);
-	std::cout << "Made motu" << std::endl;
-	//ExportHeightMapWithSeaLevel *ehm = CreateHeightMap(handle, 8192);
-	//reinterpret_cast<HeightMap*>(ehm)->normalise();
-	//ExportHeightMap *soil = CreateForestMap(handle, 4096);
-	//uint32_t *foliage = ExportFoliageData(handle, 4096);
+	options.slopeMultiplier = 1.0f;
+	options.waterRatio = 0.4f;
+	void *handle = CreateMotu(1972, &options);
+	/*SaveMotu(handle, "/Users/jerome/test.dat");
+	ReleaseMotu(handle);*/
+	//void *handle = LoadMotu("/Users/jerome/test.dat");
+//	std::cout << "Made motu" << std::endl;
+	HeightMap hm(1024, 1024);
+	std::fill(hm.data(), hm.data() + 1024 * 1024, 0.0f);
+	ExportMeshWithUVArray ema;
+	CreateForestMeshesLod1(handle, 16, 0.01f, &ema);
+	for (int i = 0; i != ema.length; ++i) {
+		reinterpret_cast<const Mesh*>(ema.data[i].handle)->rasterize(hm);
+	}
+	ReleaseForestMeshesLod1(&ema);
+	hm.normalise();
 	std::vector<uint8_t> buffer;
-	buffer.reserve(8192 * 8192 * 3);
-	/*for (const float *i = ehm->data, *j = ehm->data + 8192 * 8192; i != j; ++i) {
+	buffer.reserve(1024 * 1024 * 3);
+	for (const float *i = hm.data(), *j = hm.data() + 1024 * 1024; i != j; ++i) {
 		uint32_t gun = static_cast<uint32_t>(*i * 254.0f);
 		buffer.push_back(gun);
 		buffer.push_back(gun);
 		buffer.push_back(gun);
 	}
-	ReleaseHeightMap(ehm);*/
-	//8, 4 over 12
-	ExportArea ea;
-	ea.max.y = 9.0f / 12.0f;
-	ea.max.x = 5.0f / 12.0f;
-	ea.max.z = 1.0f;
-	ea.min.y = 8.0f / 12.0f;
-	ea.min.x = 4.0f / 12.0f;
-	ea.min.z = -0.0025f;
-	ExportMesh emesh;
-	CreateMesh(handle, &ea, 0, 14, &emesh);
-	std::cout << "Vertices: " << emesh.vertices.length << std::endl;
-	Mesh mesh;
-	mesh.vertices.reserve(emesh.vertices.length);
-	for (size_t i = 0, j = emesh.vertices.length; i != j; ++i) {
-		const auto &v3 = emesh.vertices.data[i];
-		mesh.vertices.emplace_back((v3.x - ea.min.x) * 12.0f, (v3.y - ea.min.y) * 12.0f, (v3.z - ea.min.z) * 12.0f);
-	}
-	mesh.triangles.reserve(emesh.triangles.length);
-	std::copy(emesh.triangles.data, emesh.triangles.data + emesh.triangles.length, std::back_inserter(mesh.triangles));
-	ReleaseMesh(&emesh);
-	Raster raster(8192, 8192);
-	raster.draw(mesh, 0xffffffff);
-	for (int i = 0, j = raster.length(); i != j; ++i) {
-		uint8_t val = raster.data()[i] & 0xff;
-		buffer.push_back(val);
-		buffer.push_back(val);
-		buffer.push_back(val);
-	}
 
+	writePNG("/Users/jerome/test.png", buffer, 1024, 1024);
+	/*ExportHeightMapWithSeaLevel *ehm = CreateHeightMap(handle, 8192);
+	reinterpret_cast<HeightMap*>(ehm)->normalise();
+	std::vector<uint8_t> buffer;
+	buffer.reserve(8192 * 8192 * 3);
+	for (const float *i = ehm->data, *j = ehm->data + 8192 * 8192; i != j; ++i) {
+		uint32_t gun = static_cast<uint32_t>(*i * 254.0f);
+		buffer.push_back(gun);
+		buffer.push_back(gun);
+		buffer.push_back(gun);
+	}
+	ReleaseHeightMap(ehm);
 	writePNG("/Users/jerome/test.png", buffer, 8192, 8192);
-	/*uint8_t *norms = CreateNormalMap(handle, 1, 4096);
-	std::copy(norms, norms + 4096 * 4096 * 3, std::back_inserter(buffer));
-	ReleaseNormalMap(norms);
-	writePNG("/Users/jerome/test.png", buffer, 4096, 4096);*/
-	/*float *depths = CreateSeaDepthMap(handle, 1024);
-	for (size_t i = 0, j = 1024 * 1024; i != j; ++i) {
-		uint8_t val = static_cast<uint8_t>(depths[i] * 255.0f);
-		buffer.push_back(val);
-		buffer.push_back(val);
-		buffer.push_back(val);
-	}
-	ReleaseSeaDepthMap(depths);
-	writePNG("/Users/jerome/test.png", buffer, 1024, 1024);*/
-
-	/*
-	uint8_t *data = CreateNormalMap3DC(handle, 2, 1024);
-	FILE *f = fopen("/Users/jerome/normals.3dc", "wb");
-	fwrite(data, 1, 1024 * 1024, f);
-	fclose(f);
-	ReleaseNormalMap3DC(data);*/
-	/*ReleaseFoliageMap(soil);
-	ExportQuantisedRiverArray uvs;
-	CreateQuantisedRiverMeshes(handle, ehm, &uvs);
-	std::cout << uvs.length << std::endl;
-	ReleaseQuantisedRiverMeshes(&uvs);*/
-	//ReleaseHeightMap(ehm);
+	/*const Raster &raster = *reinterpret_cast<Island*>(handle)->image;
+	std::vector<uint8_t> buffer;
+	buffer.reserve(raster.length() * 3);
+	writePNG("/Users/jerome/test.png", buffer, raster.width(), raster.height());*/
 	ReleaseMotu(handle);
 }
 

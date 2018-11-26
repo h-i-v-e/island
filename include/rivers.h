@@ -35,25 +35,25 @@ namespace motu {
 	public:
 		typedef std::vector<River::Ptr> RiverList;
 
-		Rivers(Mesh &mesh, float maxHeight, float flowSDthreshold);
+		Rivers(Mesh &mesh, const MeshEdgeMap &, float maxHeight, float flowSDthreshold);
 
 		const RiverList &riverList() const{
 			return mRivers;
 		}
 
-		void addaptToTesselation(const Mesh &old, const Mesh &tesselated);
+		//void addaptToTesselation(const Mesh &old, const Mesh &tesselated);
 
-		void smooth(Mesh &mesh) const;
+		void smooth(Mesh &mesh, const MeshEdgeMap &) const;
 
-		void smooth(Mesh &mesh, int iterations) const{
+		void smooth(Mesh &mesh, const MeshEdgeMap &mem, int iterations) const{
 			while (iterations--) {
-				smooth(mesh);
+				smooth(mesh, mem);
 			}
 		}
 
 		void jiggle(Mesh &mesh) const;
 
-		void carveInto(Mesh &mesh, bool formDeltas) const;
+		void carveInto(Mesh &mesh, const MeshEdgeMap &, bool formDeltas) const;
 
 		Mesh &getMesh(const River &, const Mesh &, Mesh &) const;
 	private:

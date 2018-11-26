@@ -28,7 +28,9 @@ namespace motu{
         
         BoundingRectangle(const BoundingRectangle &other) : topLeft(other.topLeft), bottomRight(other.bottomRight){}
         
-        BoundingRectangle() {}
+        BoundingRectangle() {
+			clear();
+		}
         
         void clear(){
             topLeft(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());

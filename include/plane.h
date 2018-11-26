@@ -9,6 +9,8 @@
 #ifndef plane_h
 #define plane_h
 
+#include "util.h"
+
 namespace motu{
     struct Plane{
         Vector3 point, normal;
@@ -19,11 +21,12 @@ namespace motu{
         
         bool intersectionTime(const Vector3 &point, const Vector3 &direction, float &when) const{
             float nd = normal.dot(direction);
-            if (nd == 0.0f){
+            if (motu::almostZero(nd)){
                 return false;
             }
-            when = - (point - this->point).dot(normal) / nd;
-            return true;
+            when = (this->point - point).dot(normal) / nd;
+			return when >= 0.0f;
+			//return true;
         }
         
         float distanceTo(const Vector3 &point) const{

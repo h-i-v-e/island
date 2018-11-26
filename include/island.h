@@ -2,6 +2,7 @@
 #define ISLAND_H
 
 #include <random>
+#include <iostream>
 
 #include "grid.h"
 #include "mesh.h"
@@ -9,8 +10,11 @@
 #include "rivers.h"
 #include "decoration.h"
 #include "colour.h"
+#include "raster.h"
 
 namespace motu {
+
+	class Raster;
 
 	class Island {
 	public:
@@ -46,6 +50,8 @@ namespace motu {
 			generateTopology(rnd, options);
 		}
 
+		Island(){}
+
 		const Mesh &lod(int offset) const {
 			return lods[offset];
 		}
@@ -69,6 +75,12 @@ namespace motu {
 		static constexpr float size() {
 			return 8192.0f;
 		}
+
+		MeshWithUV &createForestMeshLod1(MeshWithUV &, float treeHeight) const;
+
+		friend std::ostream& operator<<(std::ostream &, const Island &);
+
+		friend std::istream& operator>>(std::istream &, Island &);
 
 	private:
 		float maxZ, maxHeight;

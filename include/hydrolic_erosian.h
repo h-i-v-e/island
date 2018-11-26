@@ -17,7 +17,7 @@ namespace motu {
 
 	Mesh &applyHydrolicErosian(std::default_random_engine &rd, const RockSet &rock, Decoration &decoration);
 
-	Mesh &applyHydrolicErosian(Mesh &mesh, const RockSet &rock, bool includeSea = false);
+	Mesh &applyHydrolicErosian(Mesh &mesh, const MeshEdgeMap &mem, const RockSet &rock, bool includeSea = false);
 }
 
 #endif

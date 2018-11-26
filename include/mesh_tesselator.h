@@ -3,10 +3,13 @@
 
 namespace motu {
 	struct Mesh;
+	struct MeshWithUV;
 
 	Mesh &tesselate(Mesh &mesh);
 
 	Mesh &tesselate(Mesh &mesh, float greaterThan);
+
+	MeshWithUV &tesselate(MeshWithUV &mesh);
 }
 
 #endif

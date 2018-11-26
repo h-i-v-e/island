@@ -1,4 +1,5 @@
 set(sources
+	z_axis_collider.cpp
 	island.cpp
 	lodepng.cpp
 	triangle3.cpp

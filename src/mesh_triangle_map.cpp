@@ -4,8 +4,8 @@
 using namespace motu;
 
 MeshTriangleMap::MeshTriangleMap(const Mesh &mesh) {
-	vertices = new std::pair<int, int>[mesh.vertices.size()];
-	triangleBuffer = new int[mesh.triangles.size()];
+	auto vertices = new std::pair<int, int>[mesh.vertices.size()];
+	auto triangleBuffer = new int[mesh.triangles.size()];
 	memset(vertices, 0, mesh.vertices.size() * sizeof(std::pair<int, int>));
 	for (size_t i = 0; i != mesh.triangles.size(); ++i) {
 		++vertices[mesh.triangles[i]].second;
@@ -21,4 +21,6 @@ MeshTriangleMap::MeshTriangleMap(const Mesh &mesh) {
 			triangleBuffer[vertices[mesh.triangles[i + j]].second++] = static_cast<int>(i - 2);
 		}
 	}
+	this->vertices = std::unique_ptr<std::pair<int, int>>(vertices);
+	this->triangleBuffer = std::unique_ptr<int>(triangleBuffer);
 }

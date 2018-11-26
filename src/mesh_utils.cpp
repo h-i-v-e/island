@@ -3,8 +3,7 @@
 
 using namespace motu;
 
-Mesh &motu::smoothPeeks(Mesh &mesh) {
-	const MeshEdgeMap &mep = mesh.edgeMap();
+Mesh &motu::smoothPeeks(Mesh &mesh, const MeshEdgeMap &mep) {
 	std::vector<float> adjustments(mesh.vertices.size());
 	size_t numVerts = mesh.vertices.size();
 	for (size_t i = 0; i != numVerts; ++i) {

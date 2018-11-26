@@ -15,10 +15,10 @@ namespace motu {
 			return Vector2(std::cosf(angle), std::sinf(angle));
 		}
 
-		Vector2 createDisplacement(std::default_random_engine &rd, const Mesh &mesh, int idx, float mul = 0.5f) const{
+		Vector2 createDisplacement(std::default_random_engine &rd, const Mesh &mesh, const MeshEdgeMap &mep, int idx, float mul = 0.5f) const{
 			float min = std::numeric_limits<float>::max();
 			const Vector2 &pos = mesh.vertices[idx].asVector2();
-			for (auto opts = mesh.edgeMap().vertex(idx); opts.first != opts.second; ++opts.first) {
+			for (auto opts = mep.vertex(idx); opts.first != opts.second; ++opts.first) {
 				float sqrDist = (mesh.vertices[*opts.first].asVector2() - pos).sqrMagnitude();
 				if (sqrDist < min) {
 					min = sqrDist;

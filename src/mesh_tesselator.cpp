@@ -145,6 +145,9 @@ namespace {
 
 Mesh &motu::tesselate(Mesh &to) {
 	//std::cout << "Before: " << to.vertices.size() << std::endl;
+	if (to.vertices.size() < 3) {
+		return to;
+	}
 	VertexCache cache(to);
 	std::vector<int> triangleBuffer(to.triangles);
 	to.triangles.clear();
@@ -152,8 +155,32 @@ Mesh &motu::tesselate(Mesh &to) {
 		cache.tesselate(triangleBuffer[i], triangleBuffer[i + 1], triangleBuffer[i + 2]);
 	}
 	//std::cout << "After: " << to.vertices.size() << std::endl;
-	to.dirty();
 	return to;
+}
+
+MeshWithUV &motu::tesselate(MeshWithUV &mesh) {
+	tesselate(*reinterpret_cast<Mesh*>(&mesh));
+	if (mesh.uv.empty()) {
+		return mesh;
+	}
+	size_t old = mesh.uv.size(), nw = mesh.vertices.size();
+	mesh.uv.resize(nw);
+	MeshEdgeMap mem(mesh);
+	for (size_t i = 0; i != nw; ++i) {
+		Vector2 total = Vector2::zero();
+		int count = 0;
+		for (auto j = mem.vertex(old); j.first != j.second; ++j.first) {
+			int idx = *j.first;
+			if (idx < old) {
+				total += mesh.uv[idx];
+				if (++count == 2) {
+					break;
+				}
+			}
+		}
+		mesh.uv[i] = total * 0.5f;
+	}
+	return mesh;
 }
 
 Mesh &motu::tesselate(Mesh &to, float greaterThan) {
@@ -175,7 +202,5 @@ Mesh &motu::tesselate(Mesh &to, float greaterThan) {
 	for (int i : skip) {
 		cache.addNoSplit(triangleBuffer[i], triangleBuffer[i + 1], triangleBuffer[i + 2]);
 	}
-	//std::cout << "After: " << to.vertices.size() << std::endl;
-	to.dirty();
 	return to;
 }

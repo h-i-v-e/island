@@ -102,6 +102,32 @@ namespace motu{
 			return false;
 		}
 	};
+
+	struct SplineWithNormalsAndUV : public SplineWithNormals {
+		Vector2 uvA, uvB;
+
+		SplineWithNormalsAndUV() {}
+
+		SplineWithNormalsAndUV(
+			const Vector3 &endA, const Vector3 &endB,
+			const Vector3 &normalA, const Vector3 &normalB,
+			const Vector2 &uvA, const Vector2 &uvB) : SplineWithNormals(endA, endB, normalA, normalB),
+			uvA(uvA), uvB(uvB) {}
+
+		bool intersects(const Plane &plane, Vector3 &at, Vector3 &normal, Vector2 &uv) const {
+			Vector3 dir(direction());
+			float t;
+			if (plane.intersectionTime(endA, dir, t)) {
+				if (t >= 0.0f && t <= 1.0f) {
+					at = endA + (dir * t);
+					normal = (normalA * (1.0f - t)) + (normalB * t);
+					uv = (uvA * (1.0f - t)) + (uvB * t);
+					return true;
+				}
+			}
+			return false;
+		}
+	};
 }
 
 #endif /* spline_h */

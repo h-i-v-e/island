@@ -3,6 +3,8 @@
 
 #include <cfloat>
 #include <cstdint>
+#include <iostream>
+#include <vector>
 
 #define HASH_PRIME_A 1610612741
 #define HASH_PRIME_B 805306457
@@ -28,6 +30,21 @@ namespace motu{
 
 	static size_t hashFloat(float f) {
 		return *reinterpret_cast<uint32_t*>(&f);
+	}
+
+	template<class T>
+	void writeOutVector(std::ostream &out, const std::vector<T> &vec) {
+		size_t size = vec.size();
+		out.write(reinterpret_cast<const char *>(&size), sizeof(size_t));
+		out.write(reinterpret_cast<const char *>(vec.data()), size * sizeof(T));
+	}
+
+	template<class T>
+	void readInVector(std::istream &in, std::vector<T> &vec) {
+		size_t size;
+		in.read(reinterpret_cast<char*>(&size), sizeof(size_t));
+		vec.resize(size);
+		in.read(reinterpret_cast<char*>(vec.data()), size * sizeof(T));
 	}
 }
 #endif

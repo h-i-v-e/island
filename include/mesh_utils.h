@@ -7,7 +7,7 @@
 
 namespace motu {
 
-	Mesh &smoothPeeks(Mesh &mesh);
+	Mesh &smoothPeeks(Mesh &mesh, const MeshEdgeMap &);
 
 	struct DefaultDistInc {
 		float operator()(float old) const {

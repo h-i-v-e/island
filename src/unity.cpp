@@ -1,4 +1,5 @@
 #include <random>
+#include <fstream>
 
 #include "unity.h"
 #include "island.h"
@@ -15,8 +16,17 @@
 using namespace motu;
 
 namespace {
+	struct DecorationHandle {
+		std::vector<Vector3> trees, bushes, rocks;
+	};
+
 	void ExportVector2Vector(const std::vector<Vector2> &vec, Vector2ExportArray &exp) {
 		exp.data = reinterpret_cast<const Vector2Export*>(vec.data());
+		exp.length = vec.size();
+	}
+
+	void ExportVector3Vector(const std::vector<Vector3> &vec, Vector3ExportArray &exp) {
+		exp.data = reinterpret_cast<const Vector3Export*>(vec.data());
 		exp.length = vec.size();
 	}
 
@@ -231,12 +241,22 @@ void ReleaseQuantisedRiverMeshes(ExportQuantisedRiverArray *exp) {
 void GetDecoration(void *motu, ExportDecoration *exp) {
 	const Island *island = reinterpret_cast<Island*>(motu);
 	const Decoration &decoration = island->decoration();
-	ExportVector2Vector(decoration.trees, exp->trees);
-	ExportVector2Vector(decoration.bushes, exp->bushes);
-	ExportVector2Vector(decoration.bigRocks, exp->bigRocks);
-	ExportVector2Vector(decoration.mediumRocks, exp->mediumRocks);
-	ExportVector2Vector(decoration.smallRocks, exp->smallRocks);
-	ExportVector2Vector(decoration.forestScatter, exp->forestScatter);
+	DecorationHandle *handle = new DecorationHandle();
+	ExportVector3Vector(decoration.getTrees(handle->trees), exp->trees);
+	ExportVector3Vector(decoration.getBushes(handle->bushes), exp->bushes);
+	ExportVector3Vector(decoration.getRocks(handle->rocks), exp->rocks);
+	exp->data = handle;
+
+	/*ExportVector3Vector(decoration.treePositions, exp->trees);
+	ExportVector3Vector(decoration.bushes, exp->bushes);
+	ExportVector3Vector(decoration.bigRocks, exp->bigRocks);
+	ExportVector3Vector(decoration.mediumRocks, exp->mediumRocks);
+	ExportVector3Vector(decoration.smallRocks, exp->smallRocks);
+	ExportVector3Vector(decoration.forestScatter, exp->forestScatter);*/
+}
+
+void ReleaseDecoration(ExportDecoration *ptr) {
+	delete reinterpret_cast<DecorationHandle*>(ptr->data);
 }
 
 ExportHeightMap* CreateSoilRichnessMap(void *motu, int resolution) {
@@ -337,6 +357,46 @@ float* CreateSeaDepthMap(void *ptr, int dimension) {
 
 void ReleaseSeaDepthMap(float *ptr) {
 	delete[] ptr;
+}
+
+void CreateForestMeshesLod1(void *motu, int tilesPerAxis, float treeHeight, ExportMeshWithUVArray *out) {
+	Island *island = reinterpret_cast<Island*>(motu);
+	MeshWithUV output;
+	island->createForestMeshLod1(output, treeHeight);
+	out->length = tilesPerAxis * tilesPerAxis;
+	out->data = new ExportMeshWithUV[out->length];
+	float stepSize = 1.0f / tilesPerAxis;
+	for (int y = 0, i = 0; y != tilesPerAxis; ++y) {
+		float yOff = y * stepSize;
+		for (int x = 0; x != tilesPerAxis; ++x) {
+			float xOff = x * stepSize;
+			MeshWithUV *slice = new MeshWithUV;
+			output.slice(BoundingBox(xOff, yOff, 0.0f, xOff + stepSize, yOff + stepSize, 1.0f), *slice);
+			ExportMeshWithUV *em = out->data + i++;
+			ExportAMesh(*reinterpret_cast<ExportMesh*>(em), slice);
+			em->uv.data = reinterpret_cast<const Vector2Export*>(slice->uv.data());
+			em->uv.length = static_cast<int>(slice->uv.size());
+		}
+	}
+}
+
+void ReleaseForestMeshesLod1(ExportMeshWithUVArray *out) {
+	for (int i = 0, j = out->length; i != j; ++i) {
+		delete reinterpret_cast<MeshWithUV*>(out->data[i].handle);
+	}
+	delete[] out->data;
+}
+
+void *LoadMotu(const char *filePath) {
+	std::ifstream in(filePath, std::ios::binary | std::ios::in);
+	Island *out = new Island;
+	in >> *out;
+	return out;
+}
+
+void SaveMotu(void *island, const char *filePath) {
+	std::ofstream out(filePath, std::ios::binary | std::ios::out);
+	out << *reinterpret_cast<const Island*>(island);
 }
 
 /*uint32_t *CreateNormalAndOcclusianMap(void *motu, int lod, int dimension) {

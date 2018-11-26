@@ -19,6 +19,7 @@
 #include "mesh_edge_map.h"
 #include "mesh_triangle_map.h"
 #include "mesh_tesselator.h"
+#include "util.h"
 
 namespace motu{
 	struct BoundingBox;
@@ -28,6 +29,8 @@ namespace motu{
         typedef std::vector<Vector3> Vertices;
         typedef std::vector<Vector3> Normals;
         typedef std::vector<int> Triangles;
+
+		typedef Triangle3WithNormals TriangleType;
 		
 		struct Edge : public std::pair<int, int> {
 			Edge(int a, int b) : std::pair<int, int>(a, b) {}
@@ -61,6 +64,16 @@ namespace motu{
 
 		Mesh() {}
 
+		Mesh(const Mesh &mesh) : vertices(mesh.vertices), normals(mesh.normals), triangles(mesh.triangles){
+		}
+
+		Mesh &operator=(const Mesh &mesh) {
+			vertices = mesh.vertices;
+			normals = mesh.normals;
+			triangles = mesh.triangles;
+			return *this;
+		}
+
 		void clear() {
 			vertices.clear();
 			normals.clear();
@@ -79,13 +92,13 @@ namespace motu{
         Normals normals;
         Triangles triangles;
 
-		void calculateNormals();
+		void calculateNormals(const MeshTriangleMap &);
 
-		void smooth();
+		void smooth(const MeshEdgeMap &);
 
-		void smoothIfPositiveZ();
+		void smoothIfPositiveZ(const MeshEdgeMap &);
 
-		void smooth(const std::unordered_set<int> &exclude);
+		void smooth(const MeshEdgeMap &mem, const std::unordered_set<int> &exclude);
 
 		void rasterize(Grid<VertexAndNormal> &) const;
 
@@ -157,41 +170,85 @@ namespace motu{
 			return vmap.bind();
 		}
 
-		const MeshEdgeMap &edgeMap() const{
+		/*const MeshEdgeMap &edgeMap() const{
 			if (!mEdgeMap.get()) {
-				mEdgeMap = std::shared_ptr<MeshEdgeMap>(new MeshEdgeMap(*this));
+				mEdgeMap = std::make_unique<MeshEdgeMap>(*this);
 			}
 			return *mEdgeMap;
 		}
 
 		const MeshTriangleMap &triangleMap() const {
 			if (!mTriangleMap.get()) {
-				mTriangleMap = std::shared_ptr<MeshTriangleMap>(new MeshTriangleMap(*this));
+				mTriangleMap = std::make_unique<MeshTriangleMap>(*this);
 			}
 			return *mTriangleMap;
-		}
+		}*/
 
-		void ensureNormals() {
+		/*void ensureNormals() {
 			if (normals.size() != vertices.size()) {
 				calculateNormals();
 			}
-		}
+		}*/
 
-		void dirty() {
+		/*void dirty() {
 			mEdgeMap = nullptr;
 			mTriangleMap = nullptr;
 			normals.clear();
+		}*/
+
+		friend std::ostream &operator<<(std::ostream &out, const Mesh &mesh) {
+			motu::writeOutVector(out, mesh.vertices);
+			motu::writeOutVector(out, mesh.triangles);
+			return out;
 		}
 
-		private:
-			mutable std::shared_ptr<MeshEdgeMap> mEdgeMap;
-			mutable std::shared_ptr<MeshTriangleMap> mTriangleMap;
+		friend std::istream &operator>>(std::istream &in, Mesh &mesh) {
+			motu::readInVector(in, mesh.vertices);
+			motu::readInVector(in, mesh.triangles);
+			mesh.calculateNormals(mesh);
+			return in;
+		}
+
+		/*private:
+			mutable std::unique_ptr<MeshEdgeMap> mEdgeMap;
+			mutable std::unique_ptr<MeshTriangleMap> mTriangleMap;*/
     };
 
 	struct MeshWithUV : public Mesh{
 		typedef std::vector<Vector2> Uv;
+		typedef Triangle3WithNormalsAndUV TriangleType;
 
 		Uv uv;
+
+		MeshWithUV() {}
+
+		MeshWithUV(const MeshWithUV &mesh) : Mesh(mesh), uv(mesh.uv) {}
+
+		MeshWithUV &operator=(const MeshWithUV &mesh) {
+			Mesh::operator=(mesh);
+			uv = mesh.uv;
+			return *this;
+		}
+
+		friend std::ostream &operator<<(std::ostream &out, const MeshWithUV &mesh) {
+			out << *reinterpret_cast<const Mesh*>(&mesh);
+			motu::writeOutVector(out, mesh.uv);
+			return out;
+		}
+
+		friend std::istream &operator>>(std::istream &in, MeshWithUV &mesh) {
+			in >> *reinterpret_cast<Mesh*>(&mesh);
+			motu::readInVector(in, mesh.uv);
+			return in;
+		}
+
+		MeshWithUV &slice(const BoundingBox &bounds, MeshWithUV &out) const;
+
+		void load(std::vector<Triangle3WithNormalsAndUV> &triangles);
+
+		MeshWithUV &tesselate() {
+			return motu::tesselate(*this);
+		}
 	};
 }
 

@@ -51,6 +51,13 @@ extern "C" {
 		TriangleExportArray triangles;
 	};
 
+	struct ExportMeshWithUV {
+		void *handle;
+		Vector3ExportArray vertices, normals;
+		TriangleExportArray triangles;
+		Vector2ExportArray uv;
+	};
+
 	struct ExportQuantizedRiverNode {
 		int x, y, flow;
 	};
@@ -69,6 +76,11 @@ extern "C" {
 
 	struct ExportMeshArray {
 		ExportMesh *data;
+		int length;
+	};
+
+	struct ExportMeshWithUVArray {
+		ExportMeshWithUV *data;
 		int length;
 	};
 
@@ -94,12 +106,19 @@ extern "C" {
 	};
 
 	struct ExportDecoration {
-		Vector2ExportArray trees, bushes, bigRocks, mediumRocks, smallRocks, forestScatter;
+		void *data;
+		Vector3ExportArray trees, bushes, rocks;// bigRocks, mediumRocks, smallRocks, forestScatter;
 	};
 
 	EXPORT_TO_UNITY void *CreateMotu(int seed, const MotuOptions *);
 
+	EXPORT_TO_UNITY void *LoadMotu(const char *filePath);
+
+	EXPORT_TO_UNITY void SaveMotu(void *, const char *filePath);
+
 	EXPORT_TO_UNITY void GetDecoration(void *, ExportDecoration *);
+
+	EXPORT_TO_UNITY void ReleaseDecoration(ExportDecoration *);
 
 	EXPORT_TO_UNITY uint8_t *CreateNormalMap3DC(void *, int lod, int dimension);
 
@@ -124,6 +143,10 @@ extern "C" {
 	EXPORT_TO_UNITY void CreateRiverMeshes(void *, ExportMeshArray *);
 
 	EXPORT_TO_UNITY void ReleaseRiverMeshes(ExportMeshArray *);
+
+	EXPORT_TO_UNITY void CreateForestMeshesLod1(void *, int tilesPerAxis, float treeHeight, ExportMeshWithUVArray *);
+
+	EXPORT_TO_UNITY void ReleaseForestMeshesLod1(ExportMeshWithUVArray *out);
 
 	/*EXPORT_TO_UNITY void CreateRiverNodes(void *, ExportRiverNodes *, const ExportHeightMap *);
 

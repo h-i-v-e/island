@@ -1140,5 +1140,5 @@ void motu::joinQuantisedRiverMeshes(HeightMap &hm, MeshWithUV &from, MeshWithUV 
 		endBuilder.createEndPiece();
 	}
 	from.normals.clear();
-	from.calculateNormals();
+	from.calculateNormals(from);
 }

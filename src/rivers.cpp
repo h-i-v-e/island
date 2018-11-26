@@ -36,9 +36,8 @@ namespace {
 		}
 	};
 
-	void traceToSea(int source, Mesh &mesh, std::vector<int> &vertices, std::unordered_set<int> &rivers, const std::vector<bool> &seaVerts){
+	void traceToSea(int source, Mesh &mesh, const MeshEdgeMap &edges, std::vector<int> &vertices, std::unordered_set<int> &rivers, const std::vector<bool> &seaVerts){
 		std::vector<int> opt;
-		const MeshEdgeMap &edges = mesh.edgeMap();
 		std::unordered_set<int> visited;
 		for (float z = mesh.vertices[source].z; !seaVerts[source]; z = mesh.vertices[source].z) {
 			vertices.push_back(source);
@@ -87,9 +86,8 @@ namespace {
 		}
 	}
 
-	void mapDown(std::vector<int> &down, const Mesh &mesh) {
+	void mapDown(std::vector<int> &down, const Mesh &mesh, const MeshEdgeMap &edges) {
 		down.reserve(mesh.vertices.size());
-		const MeshEdgeMap &edges = mesh.edgeMap();
 		for (int i = 0; i != mesh.vertices.size(); ++i) {
 			auto neighbours = edges.vertex(i);
 			int d = -1;
@@ -130,9 +128,9 @@ namespace {
 		return sqrtf(sumVariance / total);
 	}
 
-	void findSources(float thresholdSd, std::vector<int> &sources, std::vector<int> &flow, const Mesh &mesh) {
+	void findSources(float thresholdSd, std::vector<int> &sources, std::vector<int> &flow, const Mesh &mesh, const MeshEdgeMap &mem) {
 		std::vector<int> down;
-		mapDown(down, mesh);
+		mapDown(down, mesh, mem);
 		calculateFlow(down, flow, mesh);
 		float mean;
 		thresholdSd *= computeFlowSDAndMean(flow, mean);
@@ -239,8 +237,7 @@ namespace {
 		}
 	}
 
-	void findRiverJoins(const Mesh &mesh, Rivers::RiverList &rivers) {
-		const MeshEdgeMap &mem = mesh.edgeMap();
+	void findRiverJoins(const Mesh &mesh, const MeshEdgeMap &mem, Rivers::RiverList &rivers) {
 		std::unordered_map<int, size_t> verts;
 		for (size_t i = 0; i != rivers.size(); ++i) {
 			River &river = *rivers[i];
@@ -270,8 +267,7 @@ namespace {
 		}
 	}
 
-	int findJoinVertex(const Mesh &mesh, int a, int b) {
-		const MeshEdgeMap &edges = mesh.edgeMap();
+	int findJoinVertex(const Mesh &mesh, const MeshEdgeMap &edges, int a, int b) {
 		auto aends = edges.vertex(a), bends = edges.vertex(b);
 		int best = -1;
 		float minZ = std::numeric_limits<float>::max();
@@ -288,9 +284,9 @@ namespace {
 	}
 
 
-	float findLowestNeighbourZ(int vert, Mesh &mesh) {
+	float findLowestNeighbourZ(int vert, Mesh &mesh, const MeshEdgeMap &mem) {
 		float lowest = mesh.vertices[vert].z;
-		auto neighbours = mesh.edgeMap().vertex(vert);
+		auto neighbours = mem.vertex(vert);
 		while (neighbours.first != neighbours.second) {
 			float z = mesh.vertices[*neighbours.first++].z;
 			if (z < lowest) {
@@ -319,7 +315,7 @@ namespace {
 		}
 	}
 
-	void fixInlandSeas(Mesh &mesh, std::vector<bool> &visited) {
+	void fixInlandSeas(Mesh &mesh, const MeshEdgeMap &edges, std::vector<bool> &visited) {
 		Mesh::PerimeterSet perimeter;
 		mesh.getPerimeterSet(perimeter);
 		visited.resize(mesh.vertices.size(), false);
@@ -330,7 +326,6 @@ namespace {
 				visited[vert] = true;
 			}
 		}
-		const MeshEdgeMap &edges = mesh.edgeMap();
 		while (!waiting.empty()) {
 			int top = waiting.top();
 			waiting.pop();
@@ -362,7 +357,7 @@ namespace {
 		return altMul * altMul * z * RIVER_DEPTH_MUL;
 	}
 
-	struct TesselationMapper {
+	/*struct TesselationMapper {
 		const Mesh &old, &tesselated;
 		std::unordered_map<Vector2, int, Hasher<Vector2>> newMapper;
 
@@ -410,7 +405,7 @@ namespace {
 				river.vertices.push_back(current);
 			}
 		}
-	};
+	};*/
 
 	inline int addRiverVertex(Mesh &out, float surface, const Vector2 &disp) {
 		int v = static_cast<int>(out.vertices.size());
@@ -453,7 +448,7 @@ namespace {
 		}
 	}
 
-	void createDeltas(const Rivers::RiverList &rivers, std::vector<float> &sediments, Mesh &mesh) {
+	void createDeltas(const Rivers::RiverList &rivers, std::vector<float> &sediments, Mesh &mesh, const MeshEdgeMap &mem) {
 		size_t verts = 0, size = rivers.size();
 		for (const River::Ptr &river : rivers) {
 			verts += river->vertices.size();
@@ -480,34 +475,33 @@ namespace {
 				}
 			}
 		}
-		const MeshEdgeMap &mep = mesh.edgeMap();
 		for (size_t i = 0, j = size; i != j; ++i) {
 			float sediment = sediments[i];
 			if (sediment == 0.0f) {
 				continue;
 			}
-			formDelta(rivers[i]->vertices.back().index, sediment, mesh, mep);
+			formDelta(rivers[i]->vertices.back().index, sediment, mesh, mem);
 		}
 	}
 }
 
-Rivers::Rivers(Mesh &mesh, float maxHeight, float flowSDthreshold) {
+Rivers::Rivers(Mesh &mesh, const MeshEdgeMap &mem, float maxHeight, float flowSDthreshold) {
 	std::vector<bool> seas;
-	fixInlandSeas(mesh, seas);
+	fixInlandSeas(mesh, mem, seas);
 	std::vector<int> sources, flow, river;
 	std::unordered_set<int> bottoms, in;
-	findSources(flowSDthreshold, sources, flow, mesh);
+	findSources(flowSDthreshold, sources, flow, mesh, mem);
 	int offset = 0;
 	for (int source : sources){
 		river.clear();
-		traceToSea(source, mesh, river, in, seas);
+		traceToSea(source, mesh, mem, river, in, seas);
 		emplaceRiver(0, flow, river, mRivers);
 	}
 	std::sort(mRivers.begin(), mRivers.end(), [&mesh](const River::Ptr &a, const River::Ptr &b) {
 		return mesh.vertices[a->vertices.back().index].z > mesh.vertices[b->vertices.back().index].z;
 	});
 	mergeRivers(mRivers);
-	findRiverJoins(mesh, mRivers);
+	findRiverJoins(mesh, mem, mRivers);
 	updateFlow(mRivers);
 	int maxFlow = 0;
 	for (const auto &river : mRivers) {
@@ -522,14 +516,14 @@ Rivers::Rivers(Mesh &mesh, float maxHeight, float flowSDthreshold) {
 	this->maxHeight = maxHeight;
 }
 
-void Rivers::addaptToTesselation(const Mesh &old, const Mesh &tesselated) {
+/*void Rivers::addaptToTesselation(const Mesh &old, const Mesh &tesselated) {
 	TesselationMapper mapper(old, tesselated);
 	for (River::Ptr &i : mRivers) {
 		mapper.mapRiver(*i);
 	}
-}
+}*/
 
-void Rivers::carveInto(Mesh &mesh, bool formDeltas) const{
+void Rivers::carveInto(Mesh &mesh, const MeshEdgeMap &mem, bool formDeltas) const{
 	float invMaxHeight = 1.0f / maxHeight;
 	Rivers::RiverList copy(mRivers.begin(), mRivers.end());
 	std::sort(copy.begin(), copy.end(), [&mesh](const auto &a, const auto &b) {
@@ -574,13 +568,12 @@ void Rivers::carveInto(Mesh &mesh, bool formDeltas) const{
 		}
 	}
 	if (formDeltas) {
-		createDeltas(mRivers, sediments, mesh);
+		createDeltas(mRivers, sediments, mesh, mem);
 	}
 }
 
-void Rivers::smooth(Mesh &mesh) const{
+void Rivers::smooth(Mesh &mesh, const MeshEdgeMap &edgeMap) const{
 	std::vector<std::pair<int, Vector3>> altered;
-	const MeshEdgeMap &edgeMap = mesh.edgeMap();
 	for (const auto &river : mRivers) {
 		if (river->vertices.size() < 3) {
 			continue;
@@ -690,6 +683,6 @@ Mesh &Rivers::getMesh(const River &river, const Mesh &mesh, Mesh &out) const{
 	int right = addRiverVertex(out, surface, centre.asVector2() + across);
 	addTriangle(out, left, lastLeft, lastRight);
 	addTriangle(out, left, lastRight, right);
-	out.calculateNormals();
+	out.calculateNormals(out);
 	return out;
 }
