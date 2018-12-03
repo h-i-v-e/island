@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "mesh.h"
+#include "tree_billboards.h"
 
 namespace motu {
 
@@ -28,13 +29,11 @@ namespace motu {
 		
 		void addRocks(const MeshEdgeMap &myEdges, std::default_random_engine &rnd);
 
-		MeshWithUV &createForestMesh(const Mesh &in, MeshWithUV &out, float treeHeight);
+		std::vector<Vector3> &getTrees(const Mesh &lod0, const MeshEdgeMap &mem, std::vector<Vector3> &) const;
 
-		std::vector<Vector3> &getTrees(std::vector<Vector3> &) const;
+		std::vector<Vector3> &getBushes(const Mesh &lod0, std::vector<Vector3> &) const;
 
-		std::vector<Vector3> &getBushes(std::vector<Vector3> &) const;
-
-		std::vector<Vector3> &getRocks(std::vector<Vector3> &) const;
+		std::vector<Vector3> &getRocks(const Mesh &lod0, const MeshEdgeMap &mem, std::vector<Vector3> &) const;
 
 		friend std::ostream& operator<<(std::ostream &, const Decoration &);
 

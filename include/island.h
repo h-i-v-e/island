@@ -32,7 +32,7 @@ namespace motu {
 		typedef Grid<Vector3> NormalMap;
 		typedef Grid<uint8_t> OcclusianMap;
 		typedef Grid<uint32_t> VegetationMap;
-		typedef std::vector<std::shared_ptr<Mesh>> RiverMeshes;
+		typedef std::vector<std::unique_ptr<Mesh>> RiverMeshes;
 		typedef std::vector<RiverVertex> VertexList;
 		typedef std::vector<std::shared_ptr<VertexList>> RiverVertexLists;
 
@@ -56,8 +56,8 @@ namespace motu {
 			return lods[offset];
 		}
 
-		const RiverMeshes &riverMeshes() const {
-			return mRiverMeshes;
+		const Mesh &riverMesh() const {
+			return mRiverMesh;
 		}
 
 		void generateNormalAndOcclusianMap(Image &) const;
@@ -76,16 +76,13 @@ namespace motu {
 			return 8192.0f;
 		}
 
-		MeshWithUV &createForestMeshLod1(MeshWithUV &, float treeHeight) const;
-
 		friend std::ostream& operator<<(std::ostream &, const Island &);
 
 		friend std::istream& operator>>(std::istream &, Island &);
 
 	private:
 		float maxZ, maxHeight;
-		Mesh lods[3];
-		RiverMeshes mRiverMeshes;
+		Mesh lods[3], mRiverMesh;
 		RiverVertexLists mRiverVertexLists;
 		std::unique_ptr<Decoration> mDecoration;
 

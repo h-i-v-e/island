@@ -767,7 +767,7 @@ Mesh &Mesh::slice(const BoundingBox &bounds, uint8_t clampDown, const Mesh &clam
 
 Mesh &Mesh::transform(const Matrix4 &m4) {
 	for (Vector3 &v3 : vertices) {
-		v3 = (m4 * Matrix4::asPoint(v3)).asVector3();
+		v3 = (Matrix4::asPoint(v3) * m4).asVector3();
 	}
 	return *this;
 }

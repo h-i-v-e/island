@@ -23,6 +23,9 @@ set(sources
 	mesh_utils.cpp
 	texture_utils.cpp
 	normal_map_compressor.cpp
+	river_mesh_builder.cpp
+	tree_billboards.cpp
+	logger.cpp
 )
 
 add_library(motu SHARED ${sources})

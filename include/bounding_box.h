@@ -126,6 +126,16 @@ namespace motu {
 			}
 			return true;
 		}
+
+		template<class Itr>
+		bool contains(Itr begin, Itr end) const {
+			while (begin != end) {
+				if (contains(*begin++)) {
+					return true;
+				}
+			}
+			return false;
+		}
 	};
 }
 

@@ -11,7 +11,7 @@
 #include "river_quantizer.h"
 #include "pipe_erosian.h"
 #include "normal_map_compressor.h"
-
+#include "logger.h"
 
 using namespace motu;
 
@@ -22,12 +22,12 @@ namespace {
 
 	void ExportVector2Vector(const std::vector<Vector2> &vec, Vector2ExportArray &exp) {
 		exp.data = reinterpret_cast<const Vector2Export*>(vec.data());
-		exp.length = vec.size();
+		exp.length = static_cast<int>(vec.size());
 	}
 
 	void ExportVector3Vector(const std::vector<Vector3> &vec, Vector3ExportArray &exp) {
 		exp.data = reinterpret_cast<const Vector3Export*>(vec.data());
-		exp.length = vec.size();
+		exp.length = static_cast<int>(vec.size());
 	}
 
 	void ExportAMesh(ExportMesh &exp, Mesh *mesh) {
@@ -94,24 +94,12 @@ void ReleaseMesh(ExportMesh *exp) {
 	delete reinterpret_cast<Mesh*>(exp->handle);
 }
 
-/*void FetchTextures(void *motu, ExportTextures *et) {
-	Island *island = reinterpret_cast<Island*>(motu);
-	et->texture = island->normalAndOcclusianMap().data();
-	et->albedo = island->albedoMap().data();
-}*/
-
 ExportHeightMapWithSeaLevel *CreateHeightMap(void *motu, int resolution) {
 	Island *island = reinterpret_cast<Island*>(motu);
 	Mesh mesh;
 	island->lod(0).slice(BoundingBox(Vector3(0.0f, 0.0f, -0.02f), Vector3(1.0f, 1.0f, 1.0f)), mesh);
 	HeightMap *hm = new HeightMap(resolution, resolution);
 	hm->load(mesh);
-	//hm->fixHoles();
-	//for (int i = 0; i != 4; ++i) {
-		//hm->smooth();
-	//}
-	/*std::default_random_engine rd;
-	PipeErosian(rd, *hm).erode();*/
 	return reinterpret_cast<ExportHeightMapWithSeaLevel*>(hm);
 }
 
@@ -119,18 +107,16 @@ void ReleaseHeightMap(ExportHeightMapWithSeaLevel *map) {
 	delete reinterpret_cast<HeightMap*>(map);
 }
 
-void CreateRiverMeshes(void *motu, ExportMeshArray *ema) {
+void CreateRiverMesh(void *motu, const ExportArea *ea, ExportMesh *em) {
 	Island *island = reinterpret_cast<Island*>(motu);
-	int num = static_cast<int>(island->riverMeshes().size());
-	ema->data = new ExportMesh[num];
-	ema->length = num;
-	for (int i = 0; i != num; ++i) {
-		ExportAMesh(ema->data[i], &*island->riverMeshes()[i]);
-	}
+	const BoundingBox &bb = *reinterpret_cast<const BoundingBox*>(ea);
+	Mesh *out = new Mesh;
+	island->riverMesh().slice(bb, *out);
+	ExportAMesh(*em, out);
 }
 
-void ReleaseRiverMeshes(ExportMeshArray *ema) {
-	delete[] ema->data;
+void ReleaseRiverMesh(ExportMesh *ema) {
+	delete reinterpret_cast<Mesh*>(ema->handle);
 }
 
 /*void CreateRiverNodes(void *handle, ExportRiverNodes *nodes, const ExportHeightMap *ehm) {
@@ -242,17 +228,12 @@ void GetDecoration(void *motu, ExportDecoration *exp) {
 	const Island *island = reinterpret_cast<Island*>(motu);
 	const Decoration &decoration = island->decoration();
 	DecorationHandle *handle = new DecorationHandle();
-	ExportVector3Vector(decoration.getTrees(handle->trees), exp->trees);
-	ExportVector3Vector(decoration.getBushes(handle->bushes), exp->bushes);
-	ExportVector3Vector(decoration.getRocks(handle->rocks), exp->rocks);
+	const Mesh &lod0 = island->lod(0);
+	MeshEdgeMap mem(lod0);
+	ExportVector3Vector(decoration.getTrees(lod0, mem, handle->trees), exp->trees);
+	ExportVector3Vector(decoration.getBushes(lod0, handle->bushes), exp->bushes);
+	ExportVector3Vector(decoration.getRocks(lod0, mem, handle->rocks), exp->rocks);
 	exp->data = handle;
-
-	/*ExportVector3Vector(decoration.treePositions, exp->trees);
-	ExportVector3Vector(decoration.bushes, exp->bushes);
-	ExportVector3Vector(decoration.bigRocks, exp->bigRocks);
-	ExportVector3Vector(decoration.mediumRocks, exp->mediumRocks);
-	ExportVector3Vector(decoration.smallRocks, exp->smallRocks);
-	ExportVector3Vector(decoration.forestScatter, exp->forestScatter);*/
 }
 
 void ReleaseDecoration(ExportDecoration *ptr) {
@@ -355,36 +336,44 @@ float* CreateSeaDepthMap(void *ptr, int dimension) {
 	return hm.detach();
 }
 
+void CreateTreeBillboards(void *ptr, TreeMeshPrototypes *input, ExportTreeBillboardsArray *output) {
+	Island *island = reinterpret_cast<Island*>(ptr);
+	int len = input->length;
+	TreeBillboards::Positions positions(len);
+	//TreeBillboards::Offsets offsets(len);
+	const Decoration &decoration = island->decoration();
+	for (int i = 0; i != len; ++i) {
+		auto &proto = input->prototypes[i];
+		auto &pos = positions[i];
+		pos.position = island->lod(0).vertices[decoration.trees[proto.offset]];
+		pos.scale = proto.scale;
+	}
+	std::vector<TreeBillboards::UPtr> octants;
+	TreeBillboards::OctantOffsets *octantOffsets = new TreeBillboards::OctantOffsets;
+	TreeBillboards::createOctants(positions, octants, *octantOffsets);
+	for (size_t i = 0; i != 8; ++i) {
+		ExportAMesh(output->octants[i].mesh, octants[i].release());
+		output->octants[i].offsets = (*octantOffsets)[i]->data();
+	}
+	output->offsetsHandle = octantOffsets;
+}
+
+void ReleaseTreeBillboards(ExportTreeBillboardsArray *billboards) {
+	for (size_t i = 0; i != 8; ++i) {
+		ReleaseMesh(&billboards->octants[i].mesh);
+	}
+	delete reinterpret_cast<TreeBillboards::OctantOffsets*>(billboards->offsetsHandle);
+}
+
+void ReleaseMeshes(ExportMeshArray *output) {
+	for (auto i = output->data, j = output->data + output->length; i != j; ++i) {
+		ReleaseMesh(i);
+	}
+	delete[] output->data;
+}
+
 void ReleaseSeaDepthMap(float *ptr) {
 	delete[] ptr;
-}
-
-void CreateForestMeshesLod1(void *motu, int tilesPerAxis, float treeHeight, ExportMeshWithUVArray *out) {
-	Island *island = reinterpret_cast<Island*>(motu);
-	MeshWithUV output;
-	island->createForestMeshLod1(output, treeHeight);
-	out->length = tilesPerAxis * tilesPerAxis;
-	out->data = new ExportMeshWithUV[out->length];
-	float stepSize = 1.0f / tilesPerAxis;
-	for (int y = 0, i = 0; y != tilesPerAxis; ++y) {
-		float yOff = y * stepSize;
-		for (int x = 0; x != tilesPerAxis; ++x) {
-			float xOff = x * stepSize;
-			MeshWithUV *slice = new MeshWithUV;
-			output.slice(BoundingBox(xOff, yOff, 0.0f, xOff + stepSize, yOff + stepSize, 1.0f), *slice);
-			ExportMeshWithUV *em = out->data + i++;
-			ExportAMesh(*reinterpret_cast<ExportMesh*>(em), slice);
-			em->uv.data = reinterpret_cast<const Vector2Export*>(slice->uv.data());
-			em->uv.length = static_cast<int>(slice->uv.size());
-		}
-	}
-}
-
-void ReleaseForestMeshesLod1(ExportMeshWithUVArray *out) {
-	for (int i = 0, j = out->length; i != j; ++i) {
-		delete reinterpret_cast<MeshWithUV*>(out->data[i].handle);
-	}
-	delete[] out->data;
 }
 
 void *LoadMotu(const char *filePath) {
@@ -409,3 +398,7 @@ void SaveMotu(void *island, const char *filePath) {
 void ReleaseNormalAndOcclusianMap(uint32_t *ptr) {
 	delete[] ptr;
 }*/
+
+void SetLogFile(const char *path) {
+	motu::setLogFile(path);
+}

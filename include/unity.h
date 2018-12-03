@@ -107,7 +107,27 @@ extern "C" {
 
 	struct ExportDecoration {
 		void *data;
-		Vector3ExportArray trees, bushes, rocks;// bigRocks, mediumRocks, smallRocks, forestScatter;
+		Vector3ExportArray trees, bushes, rocks;
+	};
+
+	struct TreeMeshPrototype {
+		int offset;
+		float scale;
+	};
+
+	struct TreeMeshPrototypes {
+		TreeMeshPrototype *prototypes;
+		int length;
+	};
+
+	struct ExportTreeBillboards {
+		ExportMesh mesh;
+		int *offsets;
+	};
+
+	struct ExportTreeBillboardsArray {
+		ExportTreeBillboards octants[8];
+		void *offsetsHandle;
 	};
 
 	EXPORT_TO_UNITY void *CreateMotu(int seed, const MotuOptions *);
@@ -128,8 +148,6 @@ extern "C" {
 
 	EXPORT_TO_UNITY void ReleaseNormalMap(uint8_t *);
 
-	//EXPORT_TO_UNITY void FetchTextures(void *, ExportTextures *);
-
 	EXPORT_TO_UNITY void ReleaseMotu(void *);
 
 	EXPORT_TO_UNITY void CreateMesh(void *, const ExportArea *, int lod, uint8_t clampSides, ExportMesh *);
@@ -138,19 +156,17 @@ extern "C" {
 
 	EXPORT_TO_UNITY void ReleaseHeightMap(ExportHeightMapWithSeaLevel *);
 
+	EXPORT_TO_UNITY void CreateTreeBillboards(void *, TreeMeshPrototypes *input, ExportTreeBillboardsArray *);
+
+	EXPORT_TO_UNITY void ReleaseTreeBillboards(ExportTreeBillboardsArray *);
+
+	EXPORT_TO_UNITY void ReleaseMeshes(ExportMeshArray *output);
+
 	EXPORT_TO_UNITY void ReleaseMesh(ExportMesh *);
 
-	EXPORT_TO_UNITY void CreateRiverMeshes(void *, ExportMeshArray *);
+	EXPORT_TO_UNITY void CreateRiverMesh(void *, const ExportArea *, ExportMesh *);
 
-	EXPORT_TO_UNITY void ReleaseRiverMeshes(ExportMeshArray *);
-
-	EXPORT_TO_UNITY void CreateForestMeshesLod1(void *, int tilesPerAxis, float treeHeight, ExportMeshWithUVArray *);
-
-	EXPORT_TO_UNITY void ReleaseForestMeshesLod1(ExportMeshWithUVArray *out);
-
-	/*EXPORT_TO_UNITY void CreateRiverNodes(void *, ExportRiverNodes *, const ExportHeightMap *);
-
-	EXPORT_TO_UNITY void ReleaseRiverNodes(ExportRiverNodes *);*/
+	EXPORT_TO_UNITY void ReleaseRiverMesh(ExportMesh *);
 
 	EXPORT_TO_UNITY void CreateQuantisedRiverMeshes(void *, ExportHeightMapWithSeaLevel *, ExportQuantisedRiverArray *);
 
@@ -169,6 +185,8 @@ extern "C" {
 	EXPORT_TO_UNITY float* CreateSeaDepthMap(void *ptr, int dimension);
 
 	EXPORT_TO_UNITY void ReleaseSeaDepthMap(float *);
+
+	EXPORT_TO_UNITY void SetLogFile(const char *path);
 }
 
 #endif

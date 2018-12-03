@@ -1,6 +1,8 @@
 #ifndef MATRIX4_H
 #define MATRIX4_H
 
+#include <cmath>
+
 #include "vector3.h"
 
 namespace motu {
@@ -23,12 +25,12 @@ namespace motu {
 			return { vec.x, vec.y, vec.z, 0.0f };
 		}
 
-		Vector4 operator*(const Vector4 &vec) const {
+		friend Vector4 operator*(const Vector4 &vec, const Matrix4 &mat4) {
 			Vector4 out;
 			for (int i = 0; i != 4; ++i) {
 				float total = 0.0f;
 				for (int j = 0; j != 4; ++j) {
-					total += data[i][j] * vec.data[j];
+					total += mat4.data[i][j] * vec.data[j];
 				}
 				out.data[i] = total;
 			}

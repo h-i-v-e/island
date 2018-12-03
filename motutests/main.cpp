@@ -222,16 +222,34 @@ inline float byteToFloat(uint32_t val, uint32_t shift) {
 TEST_CASE("unity", "unity") {
 	MotuOptions options;
 	options.coastalSlopeMultiplier = 2.0f;
-	options.maxZ = 0.11f;
+	options.maxZ = 0.05f;
 	options.noiseMultiplier = 0.0005f;
 	options.slopeMultiplier = 1.0f;
-	options.waterRatio = 0.4f;
-	void *handle = CreateMotu(1972, &options);
+	options.waterRatio = 0.5f;
+	void *handle = CreateMotu(2018, &options);
+	Vector3ExportArray trees;
+	ExportDecoration decoration;
+	GetDecoration(handle, &decoration);
+	TreeMeshPrototypes offsets;
+	offsets.length = decoration.trees.length;
+	TreeMeshPrototype *data = new TreeMeshPrototype[offsets.length];
+	for (int i = 0; i != offsets.length; ++i) {
+		data[i].offset = i;
+		data[i].scale = 1.0f / 8192.0f;
+	}
+	offsets.prototypes = data;
+	ExportTreeBillboardsArray etb;
+	//SetLogFile("C:\\Users\\Jerome\\motu.log");
+	CreateTreeBillboards(handle, &offsets, &etb);
+	std::cout << "Out: " << etb.octants[0].mesh.vertices.length << std::endl;
+	delete[] data;
+	ReleaseDecoration(&decoration);
+	ReleaseTreeBillboards(&etb);
 	/*SaveMotu(handle, "/Users/jerome/test.dat");
 	ReleaseMotu(handle);*/
 	//void *handle = LoadMotu("/Users/jerome/test.dat");
 //	std::cout << "Made motu" << std::endl;
-	HeightMap hm(1024, 1024);
+	/*HeightMap hm(1024, 1024);
 	std::fill(hm.data(), hm.data() + 1024 * 1024, 0.0f);
 	ExportMeshWithUVArray ema;
 	CreateForestMeshesLod1(handle, 16, 0.01f, &ema);
@@ -249,19 +267,25 @@ TEST_CASE("unity", "unity") {
 		buffer.push_back(gun);
 	}
 
-	writePNG("/Users/jerome/test.png", buffer, 1024, 1024);
+	writePNG("/Users/jerome/test.png", buffer, 1024, 1024);*/
 	/*ExportHeightMapWithSeaLevel *ehm = CreateHeightMap(handle, 8192);
 	reinterpret_cast<HeightMap*>(ehm)->normalise();
-	std::vector<uint8_t> buffer;
-	buffer.reserve(8192 * 8192 * 3);
-	for (const float *i = ehm->data, *j = ehm->data + 8192 * 8192; i != j; ++i) {
-		uint32_t gun = static_cast<uint32_t>(*i * 254.0f);
-		buffer.push_back(gun);
-		buffer.push_back(gun);
-		buffer.push_back(gun);
+	Raster raster(8192, 8192);
+	for (size_t i = 0, j = 8192 * 8192; i != j; ++i) {
+		uint32_t gun = static_cast<uint32_t>(ehm->data[i] * 254.0f);
+		raster.data()[i] = (gun << 16) | (gun << 8) | gun;
 	}
 	ReleaseHeightMap(ehm);
-	writePNG("/Users/jerome/test.png", buffer, 8192, 8192);
+	raster.draw(reinterpret_cast<const Island*>(handle)->riverMesh(), 0x00ff0000);
+	std::vector<uint8_t> buffer;
+	buffer.reserve(8192 * 8192 * 3);
+	for (auto i = raster.data(), j = raster.data() + raster.length(); i != j; ++i) {
+		uint32_t val = *i;
+		buffer.push_back(val & 0xff);
+		buffer.push_back((val >> 8) & 0xff);
+		buffer.push_back(val >> 16);
+	}
+	writePNG("/Users/jerome/test.png", buffer, 8192, 8192);*/
 	/*const Raster &raster = *reinterpret_cast<Island*>(handle)->image;
 	std::vector<uint8_t> buffer;
 	buffer.reserve(raster.length() * 3);

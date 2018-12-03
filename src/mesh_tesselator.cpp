@@ -85,10 +85,6 @@ namespace {
 			output.triangles.push_back(a);
 			output.triangles.push_back(b);
 			output.triangles.push_back(c);
-			if (getUp(a, b, c).dot(up) < 0.0f) {
-				std::cout << step << std::endl;
-				exit(-1);
-			}
 		}
 
 		void addTriangles(int a, int b, int c, int ab, int ac, int cb) {
@@ -203,4 +199,25 @@ Mesh &motu::tesselate(Mesh &to, float greaterThan) {
 		cache.addNoSplit(triangleBuffer[i], triangleBuffer[i + 1], triangleBuffer[i + 2]);
 	}
 	return to;
+}
+
+Mesh &motu::tesselate(Mesh &mesh, std::unordered_set<int> &in) {
+	VertexCache cache(mesh);
+	std::vector<int> triangleBuffer(mesh.triangles);
+	mesh.triangles.clear();
+	std::vector<int> skip;
+	skip.reserve(mesh.triangles.size() / 3);
+	for (size_t i = 0, j = triangleBuffer.size(); i != j; i += 3) {
+		int a = triangleBuffer[i], b = triangleBuffer[i + 1], c = triangleBuffer[i + 2];
+		if (in.find(a) != in.end()) {
+			cache.tesselate(a, b, c);
+		}
+		else {
+			skip.push_back(i);
+		}
+	}
+	for (int i : skip) {
+		cache.addNoSplit(triangleBuffer[i], triangleBuffer[i + 1], triangleBuffer[i + 2]);
+	}
+	return mesh;
 }
