@@ -33,8 +33,6 @@ namespace motu {
 		typedef Grid<uint8_t> OcclusianMap;
 		typedef Grid<uint32_t> VegetationMap;
 		typedef std::vector<std::unique_ptr<Mesh>> RiverMeshes;
-		typedef std::vector<RiverVertex> VertexList;
-		typedef std::vector<std::shared_ptr<VertexList>> RiverVertexLists;
 
 		struct Options {
 			float maxZ;
@@ -56,7 +54,7 @@ namespace motu {
 			return lods[offset];
 		}
 
-		const Mesh &riverMesh() const {
+		const MeshWithUV &riverMesh() const {
 			return mRiverMesh;
 		}
 
@@ -64,12 +62,8 @@ namespace motu {
 
 		void generateNormalMap(int lod, Image24 &) const;
 
-		const RiverVertexLists &riverVertexLists() const{
-			return mRiverVertexLists;
-		}
-
 		const Decoration &decoration() const{
-			return *mDecoration;
+			return mDecoration;
 		}
 
 		static constexpr float size() {
@@ -82,9 +76,9 @@ namespace motu {
 
 	private:
 		float maxZ, maxHeight;
-		Mesh lods[3], mRiverMesh;
-		RiverVertexLists mRiverVertexLists;
-		std::unique_ptr<Decoration> mDecoration;
+		Mesh lods[3];
+		MeshWithUV mRiverMesh;
+		Decoration mDecoration;
 
 		void generateTopology(std::default_random_engine &, const Options &);
 	};

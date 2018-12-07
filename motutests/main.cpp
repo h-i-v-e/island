@@ -243,7 +243,6 @@ TEST_CASE("unity", "unity") {
 	CreateTreeBillboards(handle, &offsets, &etb);
 	std::cout << "Out: " << etb.octants[0].mesh.vertices.length << std::endl;
 	delete[] data;
-	ReleaseDecoration(&decoration);
 	ReleaseTreeBillboards(&etb);
 	/*SaveMotu(handle, "/Users/jerome/test.dat");
 	ReleaseMotu(handle);*/
@@ -268,7 +267,7 @@ TEST_CASE("unity", "unity") {
 	}
 
 	writePNG("/Users/jerome/test.png", buffer, 1024, 1024);*/
-	/*ExportHeightMapWithSeaLevel *ehm = CreateHeightMap(handle, 8192);
+	ExportHeightMapWithSeaLevel *ehm = CreateHeightMap(handle, 8192);
 	reinterpret_cast<HeightMap*>(ehm)->normalise();
 	Raster raster(8192, 8192);
 	for (size_t i = 0, j = 8192 * 8192; i != j; ++i) {
@@ -285,7 +284,7 @@ TEST_CASE("unity", "unity") {
 		buffer.push_back((val >> 8) & 0xff);
 		buffer.push_back(val >> 16);
 	}
-	writePNG("/Users/jerome/test.png", buffer, 8192, 8192);*/
+	writePNG("/Users/jerome/test.png", buffer, 8192, 8192);
 	/*const Raster &raster = *reinterpret_cast<Island*>(handle)->image;
 	std::vector<uint8_t> buffer;
 	buffer.reserve(raster.length() * 3);

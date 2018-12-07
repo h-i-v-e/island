@@ -160,9 +160,9 @@ namespace {
 		return maxHeight;
 	}
 
-	void correctLods(Mesh *lods, Mesh &decoration) {
+	void correctLods(Mesh *lods) {
 		const Mesh::Vertices &verts0 = lods[0].vertices;
-		Mesh::Vertices &verts1 = lods[1].vertices, &verts2 = lods[2].vertices, &verts3 = decoration.vertices;
+		Mesh::Vertices &verts1 = lods[1].vertices, &verts2 = lods[2].vertices;
 		size_t i = 0;
 		for (size_t j = verts2.size(); i < j; ++i) {
 			verts1[i] = verts2[i] = verts0[i];
@@ -173,11 +173,6 @@ namespace {
 		for (size_t j = 0; j != 3; ++j) {
 			lods[j].calculateNormals(lods[j]);
 		}
-		i = 0;
-		for (size_t j = verts3.size(); i != j; ++i) {
-			verts3[i] = verts0[i];
-		}
-		decoration.calculateNormals(decoration);
 	}
 
 	Vector3 vector2ToVector3(const Vector2 &vec) {
@@ -206,76 +201,30 @@ namespace {
 		createDalauneyMesh(points, mesh);
 	}
 
-	Rivers *erode(std::default_random_engine &rd, Mesh &mesh, const MeshEdgeMap &mem, const RockSet &rock, float maxHeight, const Island::Options &options) {
+	void erode(std::default_random_engine &rd, Mesh &mesh, const MeshEdgeMap &mem, const Decoration &decoration, float maxHeight, const Island::Options &options) {
 		MeshEdgeMap mep(mesh);
-		applyHydrolicErosian(mesh, mep, rock);
-		Rivers *rivers = new Rivers(mesh, mem, maxHeight, 0.0f);
-		rivers->jiggle(mesh);
-		rivers->smooth(mesh, mem);
-		rivers->carveInto(mesh, mem, true);
-		//smoothPeeks(mesh);
-		return rivers;
+		applyHydrolicErosian(mesh, mep, decoration);
+		Rivers rivers(mesh, mem, maxHeight, 0.0f);
+		rivers.jiggle(mesh);
+		rivers.smooth(mesh, mem);
+		rivers.carveInto(mesh, mem, true);
 	}
 	
 	template <class Apply>
-	void erode(std::default_random_engine &rd, Rivers **river, Mesh &nw, const MeshEdgeMap &mem, float maxHeight, const Island::Options &options, float sd, Apply apply) {
+	void erode(std::default_random_engine &rd, Mesh &nw, const MeshEdgeMap &mem, float maxHeight, const Island::Options &options, float sd, Apply apply) {
 		addNoise(nw, rd, 32.0f, options.noiseMultiplier);
 		addNoise(nw, rd, 64.0f, options.noiseMultiplier * 0.5f);
 		apply(nw);
 		addNoise(nw, rd, 64.0f, options.noiseMultiplier * 0.25f);
 		addNoise(nw, rd, 128.0f, options.noiseMultiplier * 0.125f);
-		Rivers *rivers = new Rivers(nw, mem, maxHeight, sd);
-		rivers->jiggle(nw);
-		//rivers->smooth(nw);
-		rivers->carveInto(nw, mem, true);
-		//smoothPeeks(nw);
-		delete *river;
-		*river = rivers;
+		Rivers rivers(nw, mem, maxHeight, sd);
+		rivers.jiggle(nw);
+		rivers.carveInto(nw, mem, true);
 	}
 
-	void finalRiverPass(Rivers **rivers, Mesh &mesh, const MeshEdgeMap &mep, float maxHeight, const Island::Options &options) {
-		delete *rivers;
-		*rivers = new Rivers(mesh, mep, maxHeight, 64.0f);
-		(*rivers)->jiggle(mesh);
-		(*rivers)->smooth(mesh, mep);
-		//smoothPeeks(mesh);
-		//(*rivers)->carveInto(mesh, options.maxRiverGradient);
-	}
-
-	/*void createRiverMeshes(const Rivers &rivers, const Mesh &mesh, Island::RiverMeshes &meshes) {
-		meshes.reserve(rivers.riverList().size());
-		Mesh buffer;
-		BoundingBox bounds(0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
-		for (const auto &i : rivers.riverList()) {
-			buffer.clear();
-			rivers.getMesh(*i, mesh, buffer);
-			if (buffer.vertices.empty()) {
-				continue;
-			}
-			meshes.push_back(std::make_shared<Mesh>());
-			buffer.slice(bounds, *meshes.back());
-			if (meshes.back()->vertices.empty()) {
-				meshes.pop_back();
-			}
-		}
-	}*/
-
-	void createRiverMesh(const Rivers &rivers, Mesh &mesh, const MeshEdgeMap &mem, const MeshTriangleMap &mtm, Mesh &output) {
+	void createRiverMeshFromLod0(Decoration &decoration, const Rivers &rivers, Mesh &mesh, const MeshEdgeMap &mem, const MeshTriangleMap &mtm, MeshWithUV &output) {
 		mesh.calculateNormals(mtm);
-		size_t len = rivers.riverList().size();
-		int maxFlow = 0;
-		for (size_t i = 0; i != len; ++i) {
-			int flow = rivers.riverList()[i]->vertices.back().flow;
-			if (flow > maxFlow){
-				maxFlow = flow;
-			}
-		}
-		RiverMeshBuilder rmb(1.0f / static_cast<float>(maxFlow), mesh, output, mem, mtm);
-		for (size_t i = 0; i != len; ++i) {
-			rmb.addRiver(*rivers.riverList()[i]);
-		}
-		//rmb.smoothRiverBeds(rivers.riverList());
-		output.calculateNormals(output);
+		motu::createRiverMesh(8192.0f, decoration, rivers.riverList(), mesh, output, mem, mtm);
 	}
 
 	struct GetShifted {
@@ -290,33 +239,6 @@ namespace {
 			return i->second;
 		}
 	};
-
-	/*void smoothRiverLists(Island::RiverVertexLists &lists) {
-		GetShifted getShifted;
-		for (auto &riv : lists) {
-			//riv->reserve(riv->size() << 1);
-			std::vector<Island::RiverVertex> buffer;
-			buffer.reserve(riv->size() << 1);
-			buffer.push_back(riv->front());
-			for (size_t i = 1; i < riv->size(); ++i) {
-				buffer.emplace_back(((*riv)[i - 1].vertex + (*riv)[i].vertex) * 0.5f, (*riv)[i - 1].flow);
-				buffer.push_back((*riv)[i]);
-			}
-			riv->clear();
-			static float third = 1.0f / 3.0f;
-			riv->emplace_back(getShifted(buffer.front().vertex, buffer.front().vertex), buffer.front().flow);
-			for (size_t i = 1, j = buffer.size() - 1; i < j; ++i) {
-				riv->emplace_back(
-					getShifted(
-						buffer[i].vertex,
-						(buffer[i - 1].vertex + buffer[i].vertex + buffer[i + 1].vertex) * third
-					),
-					buffer[i].flow
-				);
-			}
-			riv->emplace_back(getShifted(buffer.back().vertex, buffer.back().vertex), buffer.back().flow);
-		}
-	}*/
 
 	struct SeaFinder {
 		const Mesh &mesh;
@@ -394,39 +316,6 @@ namespace {
 		}
 	};
 
-	/*void createRiverLists(const Mesh &mesh, const MeshEdgeMap &mem, const Rivers &rivers, Island::RiverVertexLists &lists) {
-		int len = rivers.riverList().size();
-		lists.reserve(len);
-		std::unordered_set<int> used;
-		std::vector<int> toSeaList;
-		SeaFinder seaFinder(mesh, mem);
-		for (int i = 0; i != len; ++i) {
-			used.clear();
-			toSeaList.clear();
-			auto list = std::make_shared<Island::VertexList>();
-			list->reserve(rivers.riverList()[i]->vertices.size() << 1);
-			for (const auto &j : rivers.riverList()[i]->vertices) {
-				if (used.find(j.index) == used.end()) {
-					list->emplace_back(mesh.vertices[j.index], j.flow);
-					used.insert(j.index);
-				}
-			}
-			const auto &k = rivers.riverList()[i]->vertices.back();
-			seaFinder.findSea(k.index, toSeaList);
-			for (size_t j = 1; j < toSeaList.size(); ++j) {
-				list->emplace_back(mesh.vertices[j], k.flow);
-			}
-			lists.push_back(list);
-		}
-		smoothRiverLists(lists);
-	}*/
-
-	/*void lowerMesh(Mesh &mesh, float amount) {
-		for (Vector3 &vert : mesh.vertices) {
-			vert.z -= amount;
-		}
-	}*/
-
 	void forceMinimumSeaDepth(Mesh &mesh, const MeshEdgeMap &mem, float minDepth) {
 		for (int i = 0, j = static_cast<int>(mesh.vertices.size()); i != j; ++i) {
 			float z = mesh.vertices[i].z;
@@ -446,101 +335,81 @@ namespace {
 	}
 }
 
-void Island::generateNormalAndOcclusianMap(Image &nao) const {
-	//GenerateNormalAndOcclusianMap(lods[0], lods[2], nao);
-}
-
 void Island::generateNormalMap(int lod, Image24 &nao) const {
 	GenerateNormalMap(lods[0], lods[lod], nao);
 }
 
 void Island::generateTopology(std::default_random_engine &rd, const Options &options) {
-	Mesh preSlice[3];
-	RockSet cliffs;
-	createInitialTerrain(rd, preSlice[2]);
-	maxHeight = generateSeas(preSlice[2], rd, maxZ, options);
-	preSlice[2].tesselate();
-	Rivers *rivers;
+	createInitialTerrain(rd, lods[2]);
+	maxHeight = generateSeas(lods[2], rd, maxZ, options);
+	lods[2].tesselate();
 	{
-		MeshEdgeMap mem(preSlice[2]);
-		rivers = erode(rd, preSlice[2], mem, cliffs, maxZ, options);
-		preSlice[2].smooth(mem);
-		improveCliffs(preSlice[2], mem, cliffs);
+		MeshEdgeMap mem(lods[2]);
+		erode(rd, lods[2], mem, mDecoration, maxZ, options);
+		lods[2].smooth(mem);
+		improveCliffs(lods[2], mem, mDecoration);
 	}
-	preSlice[1] = preSlice[2];
-	preSlice[1].tesselate();
+	lods[1] = lods[2];
+	lods[1].tesselate();
 	{
-		MeshEdgeMap mem(preSlice[1]);
-		preSlice[1].smooth(mem, cliffs);
-		erode(rd, &rivers, preSlice[1], mem, maxZ, options, 1.0f, [&cliffs, &mem](Mesh &nw) {
-			applyHydrolicErosian(nw, mem, cliffs);
+		MeshEdgeMap mem(lods[1]);
+		lods[1].smooth(mem, mDecoration);
+		erode(rd, lods[1], mem, maxZ, options, 1.0f, [this, &mem](Mesh &nw) {
+			applyHydrolicErosian(nw, mem, mDecoration);
 		});
-		improveCliffs(preSlice[1], mem, cliffs);
+		improveCliffs(lods[1], mem, mDecoration);
 	}
-	preSlice[1].tesselate();
+	lods[1].tesselate();
 	{
-		MeshEdgeMap mem(preSlice[1]);
-		preSlice[1].smooth(mem, cliffs);
-		erode(rd, &rivers, preSlice[1], mem, maxZ, options, 2.0f, [&cliffs, &mem](Mesh &nw) {
-			applyHydrolicErosian(nw, mem, cliffs);
+		MeshEdgeMap mem(lods[1]);
+		lods[1].smooth(mem, mDecoration);
+		erode(rd, lods[1], mem, maxZ, options, 2.0f, [this, &mem](Mesh &nw) {
+			applyHydrolicErosian(nw, mem, mDecoration);
 		});
-		improveCliffs(preSlice[1], mem, cliffs);
+		improveCliffs(lods[1], mem, mDecoration);
 	}
-	preSlice[0] = preSlice[1];
-	preSlice[0].tesselate();
-	mDecoration = std::make_unique<Decoration>(preSlice[0]);
+	lods[0] = lods[1];
+	lods[0].tesselate();
 	{
-		MeshEdgeMap mem(preSlice[0]);
-		preSlice[0].smooth(mem, cliffs);
-		applyHydrolicErosian(rd, cliffs, *mDecoration);
-		preSlice[0] = mDecoration->mesh;
-		improveCliffs(preSlice[0], mem, cliffs);
+		MeshEdgeMap mem(lods[0]);
+		lods[0].smooth(mem, mDecoration);
+		applyHydrolicErosian(rd, lods[0], mem, mDecoration);
+		improveCliffs(lods[0], mem, mDecoration);
 	}
-	preSlice[0].tesselateIfPositiveZ();
+	lods[0].tesselateIfPositiveZ();
 	{
-		MeshEdgeMap mem(preSlice[0]);
-		erode(rd, &rivers, preSlice[0], mem, maxZ, options, 4.0f, [&cliffs, &mem](Mesh &nw) {
-			applyHydrolicErosian(nw, mem, cliffs, true);
+		MeshEdgeMap mem(lods[0]);
+		mDecoration.spreadSoilRichness(lods[0], mem);
+		erode(rd, lods[0], mem, maxZ, options, 4.0f, [this, &mem](Mesh &nw) {
+			applyHydrolicErosian(nw, mem, mDecoration, true);
 		});
-		preSlice[0].smooth(mem, cliffs);
-		improveCliffs(preSlice[0], mem, cliffs);
+		lods[0].smooth(mem, mDecoration);
+		improveCliffs(lods[0], mem, mDecoration);
 	}
-	preSlice[0].tesselateIfPositiveZ();
+	lods[0].tesselateIfPositiveZ();
 	{
-		MeshEdgeMap mem(preSlice[0]);
-		preSlice[0].smooth(mem, cliffs);
-		applyHydrolicErosian(preSlice[0], mem, cliffs, true);
-		improveCliffs(preSlice[0], mem, cliffs);
-		applyHydrolicErosian(preSlice[0], mem, cliffs, true);
-	/*}
-	{
-		MeshEdgeMap mem(preSlice[0]);*/
-		finalRiverPass(&rivers, preSlice[0], mem, maxZ, options);
-		forceMinimumSeaDepth(preSlice[0], mem, -0.0005f);
-		createRiverMesh(*rivers, preSlice[0], mem, preSlice[0], mRiverMesh);
-		//createRiverLists(preSlice[0], mem, *rivers, mRiverVertexLists);
+		MeshEdgeMap mem(lods[0]);
+		mDecoration.spreadSoilRichness(lods[0], mem);
+		lods[0].smooth(mem, mDecoration);
+		applyHydrolicErosian(lods[0], mem, mDecoration, true);
+		improveCliffs(lods[0], mem, mDecoration);
+		applyHydrolicErosian(lods[0], mem, mDecoration, true);
+		forceMinimumSeaDepth(lods[0], mem, -0.0005f);
+		lods[0].smoothIfNegativeZ(mem);
+		Rivers rivers(lods[0], mem, maxHeight, 64.0f);
+		createRiverMeshFromLod0(mDecoration, rivers, lods[0], mem, lods[0], mRiverMesh);
+		mDecoration.computePositions(lods[0], mem);
 	}
-	correctLods(preSlice, mDecoration->mesh);
-	for (int i = 0; i != 3; ++i) {
-		preSlice[i].slice(BoundingBox(0.0f, 0.0f, -0.0025f, 1.0f, 1.0f, 1.0f), lods[i]);
-	}
-	delete rivers;
-	/*{
-		ZAxisCollider collider(lods[0]);
-		image = collider.drawTable();
-	}*/
-	//mDecoration->computeZValues(lods[0]);
-	//placeCoastalRocks(rd, *mDecoration);
+	correctLods(lods);
 }
 
 std::ostream& motu::operator<<(std::ostream &out, const Island &island) {
-	//maxZ, maxHeight;
 	out.write(reinterpret_cast<const char *>(&island.maxZ), sizeof(island.maxZ));
 	out.write(reinterpret_cast<const char *>(&island.maxHeight), sizeof(island.maxHeight));
 	for (size_t i = 0; i != 3; ++i) {
 		out << island.lods[i];
 	}
-	return out << *island.mDecoration;
+	return out << island.mDecoration;
 }
 
 std::istream& motu::operator>>(std::istream &in, Island &island) {
@@ -549,6 +418,7 @@ std::istream& motu::operator>>(std::istream &in, Island &island) {
 	for (size_t i = 0; i != 3; ++i) {
 		in >> island.lods[i];
 	}
-	island.mDecoration = std::make_unique<Decoration>();
-	return in >> *island.mDecoration;
+	in >> island.mDecoration;
+	island.mDecoration.computePositions(island.lods[0], island.lods[0]);
+	return in;
 }

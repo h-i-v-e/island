@@ -20,7 +20,7 @@ using namespace motu;
 namespace {
 
 	template<class ErosianDest>
-	void trackErosian(Mesh &mesh, const RockSet &rock, const MeshEdgeMap &edgeMap, int offset, bool includeSea, ErosianDest dest) {
+	void trackErosian(Mesh &mesh, const Decoration &decoration, const MeshEdgeMap &edgeMap, int offset, bool includeSea, ErosianDest dest) {
 		Vector3 *next = &mesh.vertices[offset];
 		float speed = 0.0f, lowest = next->z, carrying = 0.0f;
 		int lastDown = offset;
@@ -51,7 +51,7 @@ namespace {
 			speed = speed * 3.0f + acceleration;
 			speed *= 0.25f;
 			float erosian = carrying - speed;
-			if (erosian < 0.0f && rock.find(lastDown) != rock.end()) {
+			if (erosian < 0.0f && decoration.isRock(lastDown)) {
 				erosian = 0.0f;
 			}
 			dest(mesh, lastDown, carrying - speed);
@@ -96,34 +96,23 @@ namespace {
 			return Vector3(v2.x, v2.y, 0.0f);
 		}
 
-		int operator()(int vert, const Vector3 &offset, float richness) {
+		void operator()(int vert, const Vector3 &offset, float richness) {
 			richness *= broad.get(offset.asVector2()) * fine.get(offset.asVector2());
 			if (richness > 0.1f) {
-				decoration.trees.push_back(vert);
-				/*for (int i = static_cast<int>(numScatter(rd) * richness); i; --i) {
-					Vector3 pos = offset + getRandomDirection() * dist(rd);
-					if (inRange(pos.x) && inRange(pos.y)) {
-						decoration.forestScatter.push_back(pos);
-					}
-				}*/
-				return 1;
+				decoration.addTree(vert);
 			}
-			//richness *= fine.get(offset.asVector2());
 			if (richness > 0.05f) {
-				decoration.bushes.push_back(vert/*offset + getRandomDirection() * dist(rd)*/);
+				decoration.addBush(vert);
 			}
-			return 0;
 		}
 
-		void placeRock(const Mesh &mesh, const MeshEdgeMap &mem, int idx) {
-			/*auto disp = displacer.createDisplacement(rd, mesh, mem, idx);
-			decoration.smallRocks.emplace_back(disp.x, disp.y, 0.0f);*/
-			decoration.rocks.push_back(idx);
+		void placeRock(int idx) {
+			decoration.addRock(idx);
 		}
 	};
 
 	template <class Tracker>
-	Mesh &erode(Mesh &mesh, const MeshEdgeMap &edges, const RockSet &rock, bool includeSea, Tracker tracker) {
+	Mesh &erode(Mesh &mesh, const MeshEdgeMap &edges, const Decoration &decoration, bool includeSea, Tracker tracker) {
 		std::vector<std::pair<int, float>> sort(mesh.vertices.size());
 		for (size_t i = 0; i != sort.size(); ++i) {
 			sort[i] = std::make_pair(static_cast<int>(i), mesh.vertices[i].z);
@@ -135,66 +124,46 @@ namespace {
 			if (i.second < 0.0f) {
 				return mesh;
 			}
-			trackErosian(mesh, rock, edges, i.first, includeSea, tracker);
+			trackErosian(mesh, decoration, edges, i.first, includeSea, tracker);
 		}
 		return mesh;
 	}
 }
 
-Mesh &motu::applyHydrolicErosian(std::default_random_engine &rd, const RockSet &rock, Decoration &decoration) {
-	MeshEdgeMap mem(decoration.mesh);
-	if (decoration.mesh.normals.empty()) {
-		decoration.mesh.calculateNormals(decoration.mesh);
+Mesh &motu::applyHydrolicErosian(std::default_random_engine &rd, Mesh &mesh, const MeshEdgeMap &mem, Decoration &decoration) {
+	if (mesh.normals.empty()) {
+		mesh.calculateNormals(mesh);
 	}
-	decoration.soilRichness.resize(decoration.mesh.vertices.size(), 0.0f);
 	std::vector<int> sea;
-	erode(decoration.mesh, mem, rock, true, [&decoration](Mesh &mesh, int offset, float shift) {
+	decoration.reserveSoilRichness(mesh.vertices.size());
+	erode(mesh, mem, decoration, true, [&decoration](Mesh &mesh, int offset, float shift) {
 		mesh.vertices[offset].z += shift;
-		decoration.soilRichness[offset] += shift;
+		decoration.addSoilRichness(offset, shift);
 	});
-	float max = std::numeric_limits<float>::min();
-	float min = std::numeric_limits<float>::max();
-	for (float f : decoration.soilRichness) {
-		if (f < min) {
-			min = f;
-		}
-		if (f > max) {
-			max = f;
-		}
-	}
-	float mul = 1.0f / (max - min);
-	for (float &f : decoration.soilRichness) {
-		f = (f - min) * mul;
-	}
-	Vector3 up = Vector3::unitZ();
-	std::uniform_real_distribution<float> quarter(0.0f, 0.25f);
+	decoration.normaliseSoilRichness();
 	std::uniform_real_distribution<float> one(0.0f, 1.0f);
 	std::uniform_real_distribution<float> half(0.0f, 0.5f);
-	std::uniform_real_distribution<float> extraTree(0.0f, 0.3f);
-	std::uniform_real_distribution<float> middleA(0.125f, 0.4375f), middleB(0.5625f, 0.875f), across(-0.5f, 0.5f);
-	TreePlacer treePlacer(computeAverageVertexDistance(decoration.mesh, mem), Vector2(one(rd), one(rd)), Vector2(one(rd), one(rd)), decoration, rd);
-	decoration.forest.resize(decoration.mesh.vertices.size());
-	for (size_t i = 0; i != decoration.soilRichness.size(); ++i) {
-		if (decoration.mesh.vertices[i].z <= 0.0f || decoration.occupied.find(i) != decoration.occupied.end()) {
+	TreePlacer treePlacer(computeAverageVertexDistance(mesh, mem), Vector2(one(rd), one(rd)), Vector2(one(rd), one(rd)), decoration, rd);
+	for (size_t i = 0, j = mesh.vertices.size(); i != j; ++i) {
+		if (mesh.vertices[i].z <= 0.0f) {
 			continue;
 		}
-		float soil = decoration.soilRichness[i] * powf(decoration.mesh.normals[i].dot(up), MOTU_FLATNESS_POW);
+		float soil = decoration.soilRichnessAt(i) * powf(mesh.normals[i].z, MOTU_FLATNESS_POW);
 		float rand = half(rd);
 		if (rand > (soil * 2.0f)) {
 			if (one(rd) < 0.05f) {
-				treePlacer.placeRock(decoration.mesh, mem, i);
+				treePlacer.placeRock(i);
 			}
 		}
 		else {
-			decoration.occupied.insert(i);
-			decoration.forest[i] = static_cast<float>(treePlacer(i, decoration.mesh.vertices[i], soil));
+			treePlacer(i, mesh.vertices[i], soil);
 		}
 	}
-	return decoration.mesh;
+	return mesh;
 }
 
-Mesh &motu::applyHydrolicErosian(Mesh &mesh, const MeshEdgeMap &mem, const RockSet &rock, bool includeSea) {
-	return erode(mesh, mem, rock, includeSea, [](Mesh &mesh, int offset, float shift) {
+Mesh &motu::applyHydrolicErosian(Mesh &mesh, const MeshEdgeMap &mem, const Decoration &decoration, bool includeSea) {
+	return erode(mesh, mem, decoration, includeSea, [](Mesh &mesh, int offset, float shift) {
 		mesh.vertices[offset].z += shift;
 	});
 }

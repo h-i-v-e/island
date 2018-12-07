@@ -8,7 +8,6 @@
 #include "height_map.h"
 #include "mesh_triangle_map.h"
 #include "mesh_edge_map.h"
-#include "river_quantizer.h"
 #include "pipe_erosian.h"
 #include "normal_map_compressor.h"
 #include "logger.h"
@@ -16,9 +15,6 @@
 using namespace motu;
 
 namespace {
-	struct DecorationHandle {
-		std::vector<Vector3> trees, bushes, rocks;
-	};
 
 	void ExportVector2Vector(const std::vector<Vector2> &vec, Vector2ExportArray &exp) {
 		exp.data = reinterpret_cast<const Vector2Export*>(vec.data());
@@ -47,6 +43,12 @@ namespace {
 		exp.vertices.length = static_cast<int>(mesh->vertices.size());
 		exp.triangles.data = reinterpret_cast<int*>(mesh->triangles.data());
 		exp.triangles.length = static_cast<int>(mesh->triangles.size());
+	}
+
+	void ExportAMeshWithUV(ExportMeshWithUV &exp, MeshWithUV *mesh) {
+		ExportAMesh(*reinterpret_cast<ExportMesh*>(&exp), reinterpret_cast<Mesh*>(mesh));
+		exp.uv.length = static_cast<int>(mesh->uv.size());
+		exp.uv.data = reinterpret_cast<Vector2Export*>(mesh->uv.data());
 	}
 
 	Grid<float> &createHeightMap(const Mesh &mesh, const std::vector<float> &z, Grid<float> &out) {
@@ -107,177 +109,49 @@ void ReleaseHeightMap(ExportHeightMapWithSeaLevel *map) {
 	delete reinterpret_cast<HeightMap*>(map);
 }
 
-void CreateRiverMesh(void *motu, const ExportArea *ea, ExportMesh *em) {
+void CreateRiverMesh(void *motu, const ExportArea *ea, ExportMeshWithUV *em) {
 	Island *island = reinterpret_cast<Island*>(motu);
 	const BoundingBox &bb = *reinterpret_cast<const BoundingBox*>(ea);
-	Mesh *out = new Mesh;
+	MeshWithUV *out = new MeshWithUV;
 	island->riverMesh().slice(bb, *out);
-	ExportAMesh(*em, out);
+	ExportAMeshWithUV(*em, out);
 }
 
-void ReleaseRiverMesh(ExportMesh *ema) {
-	delete reinterpret_cast<Mesh*>(ema->handle);
-}
-
-/*void CreateRiverNodes(void *handle, ExportRiverNodes *nodes, const ExportHeightMap *ehm) {
-	Island *island = reinterpret_cast<Island*>(handle);
-	std::vector<std::pair<int, int>> output;
-	int len = island->riverVertexLists().size();
-	nodes->length = len;
-	nodes->rivers = new TriangleExportArray[len];
-	for (int i = 0; i != len; ++i) {
-		const auto &list = *island->riverVertexLists()[i];
-		output.clear();
-		quantizeRiver(*reinterpret_cast<const HeightMap*>(ehm), list, output);
-		int l = output.size();
-		nodes->rivers[i].length = l << 1;
-		int *data = new int[l << 1];
-		for (int j = 0, k = 0; j != l; ++j) {
-			std::pair<int, int> node = output[j];
-			data[k++] = static_cast<int>(node.first);
-			data[k++] = static_cast<int>(node.second);
-		}
-		nodes->rivers[i].data = data;
-	}
-}*/
-
-/*void ReleaseRiverNodes(ExportRiverNodes *nodes) {
-	int len = nodes->length;
-	for (int i = 0; i != len; ++i) {
-		delete[] nodes->rivers[i].data;
-	}
-	delete[] nodes->rivers;
-}*/
-
-void CreateQuantisedRiverMeshes(void *motu, ExportHeightMapWithSeaLevel *ehm, ExportQuantisedRiverArray *exp) {
-	const Island *island = reinterpret_cast<Island*>(motu);
-	HeightMap *hm = reinterpret_cast<HeightMap*>(ehm);
-	size_t len = island->riverVertexLists().size();
-	exp->length = static_cast<int>(len);
-	exp->data = new ExportQuantisedRiver[len];
-	std::vector<QuantisedRiver> outputs(len);
-	RiverQuantiser rq(*hm);
-	for (size_t i = 0; i != len; ++i) {
-		outputs[i].reserve(island->riverVertexLists()[i]->size());
-		rq.quantiseRiver(*island->riverVertexLists()[i], outputs[i]);
-	}
-	std::vector<QuantisedRiver*> buffer(len);
-	std::vector<int> joinTos;
-	for (size_t i = 0; i != len; ++i) {
-		buffer[i] = outputs.data() + i;
-	}
-	dedupeQuantisedRivers(*hm, buffer, joinTos);
-	int maxFlow = 0;
-	for (const auto &i : outputs) {
-		if (!i.empty() && i.back().flow > maxFlow) {
-			maxFlow = i.back().flow;
-		}
-	}
-	float mf = sqrtf(static_cast<float>(maxFlow));
-	std::vector<MeshWithUV*> meshes;
-	meshes.reserve(buffer.size());
-	for (size_t i = 0; i != len; ++i) {
-		QuantisedRiver *river = buffer[i];
-		if (river->size() > 2) {
-			MeshWithUV *mesh = new MeshWithUV;
-			createQuantisedRiverMesh(*hm, *river, *mesh, mf);
-			meshes.push_back(mesh);
-		}
-		else {
-			meshes.push_back(nullptr);
-		}
-	}
-	for (size_t i = 0; i != len; ++i) {
-		if (joinTos[i] == -1) {
-			continue;
-		}
-		MeshWithUV *from = meshes[i], *to = meshes[joinTos[i]];
-		if (from && to && from->triangles.size() && to->triangles.size()) {
-			joinQuantisedRiverMeshes(*hm, *from, *to);
-		}
-	}
-	for (size_t i = 0; i != len; ++i) {
-		MeshWithUV *mesh = meshes[i];
-		ExportAMesh(exp->data[i].mesh, mesh);
-		QuantisedRiver *river = buffer[i];
-		if (mesh) {
-			exp->data[i].uv.length = static_cast<int>(mesh->uv.size());
-			exp->data[i].uv.data = reinterpret_cast<Vector2Export*>(mesh->uv.data());
-		}
-		else {
-			exp->data[i].uv.length = 0;
-			exp->data[i].uv.data = nullptr;
-		}
-		exp->data[i].quantisedRiverNodes = new ExportQuantizedRiverNode[river->size()];
-		exp->data[i].numNodes = static_cast<int>(river->size());
-		for (size_t j = 0; j != river->size(); ++j) {
-			exp->data[i].quantisedRiverNodes[j] = *reinterpret_cast<ExportQuantizedRiverNode*>(river->data() + j);
-		}
-	}
-}
-
-void ReleaseQuantisedRiverMeshes(ExportQuantisedRiverArray *exp) {
-	for (auto i = exp->data, j = exp->data + exp->length; i != j; ++i) {
-		delete reinterpret_cast<MeshWithUV *>(i->mesh.handle);
-		delete[] i->quantisedRiverNodes;
-	}
-	delete[] exp->data;
+void ReleaseMeshWithUV(ExportMeshWithUV *ema){
+	delete reinterpret_cast<MeshWithUV*>(ema->handle);
 }
 
 void GetDecoration(void *motu, ExportDecoration *exp) {
 	const Island *island = reinterpret_cast<Island*>(motu);
 	const Decoration &decoration = island->decoration();
-	DecorationHandle *handle = new DecorationHandle();
-	const Mesh &lod0 = island->lod(0);
-	MeshEdgeMap mem(lod0);
-	ExportVector3Vector(decoration.getTrees(lod0, mem, handle->trees), exp->trees);
-	ExportVector3Vector(decoration.getBushes(lod0, handle->bushes), exp->bushes);
-	ExportVector3Vector(decoration.getRocks(lod0, mem, handle->rocks), exp->rocks);
-	exp->data = handle;
-}
-
-void ReleaseDecoration(ExportDecoration *ptr) {
-	delete reinterpret_cast<DecorationHandle*>(ptr->data);
-}
-
-ExportHeightMap* CreateSoilRichnessMap(void *motu, int resolution) {
-	const Island *island = reinterpret_cast<Island*>(motu);
-	Grid<float> *grid = new Grid<float>(resolution, resolution);
-	createHeightMap(island->decoration().mesh, island->decoration().soilRichness, *grid);
-	return reinterpret_cast<ExportHeightMap*>(grid);
-}
-
-ExportHeightMap* CreateForestMap(void *motu, int resolution) {
-	const Island *island = reinterpret_cast<Island*>(motu);
-	Grid<float> *grid = new Grid<float>(resolution, resolution);
-	createHeightMap(island->decoration().mesh, island->decoration().forest, *grid);
-	return reinterpret_cast<ExportHeightMap*>(grid);
-}
-
-void ReleaseFoliageMap(ExportHeightMap *ehm) {
-	delete reinterpret_cast<Grid<float>*>(ehm);
+	ExportVector3Vector(decoration.trees(), exp->trees);
+	ExportVector3Vector(decoration.bushes(), exp->bushes);
+	ExportVector3Vector(decoration.rocks() , exp->rocks);
 }
 
 uint32_t *ExportFoliageData(void *motu, int dimension) {
 	uint32_t *output = new uint32_t[dimension * dimension];
 	const Island *island = reinterpret_cast<Island*>(motu);
-	Mesh buffer;
 	Grid<float> grid(dimension, dimension);
-	buffer = island->decoration().mesh;
-	for (size_t i = 0; i != buffer.vertices.size(); ++i) {
-		buffer.vertices[i].z = island->decoration().soilRichness[i];
-	}
-	buffer.rasterize(grid);
+	const Decoration &decoration = island->decoration();
+	decoration.fillForestMap(island->lod(0), grid);
 	for (int i = 0, j = grid.length(); i != j; ++i) {
 		output[i] = clamp(grid.data()[i]) << 24;
 	}
 	std::fill(grid.data(), grid.data() + grid.length(), 0.0f);
-	for (size_t i = 0; i != buffer.vertices.size(); ++i) {
-		buffer.vertices[i].z = island->decoration().forest[i];
-	}
-	buffer.rasterize(grid);
+	decoration.fillRiverMap(island->lod(0), grid);
 	for (int i = 0, j = grid.length(); i != j; ++i) {
 		output[i] |= clamp(grid.data()[i]) << 16;
+	}
+	std::fill(grid.data(), grid.data() + grid.length(), 0.0f);
+	decoration.fillRockMap(island->lod(0), grid);
+	for (int i = 0, j = grid.length(); i != j; ++i) {
+		output[i] |= clamp(grid.data()[i]) << 8;
+	}
+	std::fill(grid.data(), grid.data() + grid.length(), 0.0f);
+	decoration.fillSoilRichnessMap(island->lod(0), grid);
+	for (int i = 0, j = grid.length(); i != j; ++i) {
+		output[i] |= clamp(grid.data()[i]);
 	}
 	return output;
 }
@@ -340,12 +214,11 @@ void CreateTreeBillboards(void *ptr, TreeMeshPrototypes *input, ExportTreeBillbo
 	Island *island = reinterpret_cast<Island*>(ptr);
 	int len = input->length;
 	TreeBillboards::Positions positions(len);
-	//TreeBillboards::Offsets offsets(len);
 	const Decoration &decoration = island->decoration();
 	for (int i = 0; i != len; ++i) {
 		auto &proto = input->prototypes[i];
 		auto &pos = positions[i];
-		pos.position = island->lod(0).vertices[decoration.trees[proto.offset]];
+		pos.position = decoration.trees()[proto.offset];
 		pos.scale = proto.scale;
 	}
 	std::vector<TreeBillboards::UPtr> octants;
@@ -387,17 +260,6 @@ void SaveMotu(void *island, const char *filePath) {
 	std::ofstream out(filePath, std::ios::binary | std::ios::out);
 	out << *reinterpret_cast<const Island*>(island);
 }
-
-/*uint32_t *CreateNormalAndOcclusianMap(void *motu, int lod, int dimension) {
-	Island::Image nao(dimension, dimension);
-	const Island *island = reinterpret_cast<Island*>(motu);
-	island->generateNormalAndOcclusianMap(nao);
-	return nao.detach();
-}
-
-void ReleaseNormalAndOcclusianMap(uint32_t *ptr) {
-	delete[] ptr;
-}*/
 
 void SetLogFile(const char *path) {
 	motu::setLogFile(path);

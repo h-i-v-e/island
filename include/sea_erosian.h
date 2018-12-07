@@ -9,14 +9,14 @@
 namespace motu {
 
 	struct Mesh;
-	struct Decoration;
 	class MeshEdgeMap;
+	class Decoration;
 
 	typedef std::vector<std::unique_ptr<std::vector<std::pair<int, int>>>> Coastlines;
 
 	void applySeaErosian(Mesh &mesh, const MeshEdgeMap &, float strength);
 
-	void improveCliffs(Mesh &mesh, const MeshEdgeMap &, std::unordered_set<int> &cliffs);
+	void improveCliffs(Mesh &mesh, const MeshEdgeMap &, Decoration &decoration);
 
 	void mapCoastlines(const Mesh &, const MeshEdgeMap &, Coastlines &);
 
@@ -25,8 +25,6 @@ namespace motu {
 	void eatCoastlines(Mesh &, const MeshEdgeMap &, int steps);
 
 	void formBeaches(Mesh &, const MeshEdgeMap &);
-
-	void placeCoastalRocks(std::default_random_engine &, Decoration &decoration);
 }
 
 #endif

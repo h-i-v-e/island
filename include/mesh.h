@@ -24,6 +24,7 @@
 namespace motu{
 	struct BoundingBox;
 	struct Matrix4;
+	class Decoration;
 
     struct Mesh{
         typedef std::vector<Vector3> Vertices;
@@ -98,7 +99,9 @@ namespace motu{
 
 		void smoothIfPositiveZ(const MeshEdgeMap &);
 
-		void smooth(const MeshEdgeMap &mem, const std::unordered_set<int> &exclude);
+		void smoothIfNegativeZ(const MeshEdgeMap &);
+
+		void smooth(const MeshEdgeMap &mem, const Decoration &);
 
 		void rasterize(Grid<VertexAndNormal> &) const;
 
@@ -149,10 +152,6 @@ namespace motu{
 			return motu::tesselate(*this, 0.0f);
 		}
 
-		//indices are the same a original triangles and values are offsets
-		//into tesselated vertices
-		//void tesselateAndMapCentroids(std::vector<int> &centroids, Mesh &tesselated);
-
 		BoundingBox &getMaxSquare(BoundingBox &out) const;
 
 		Mesh &transform(const Matrix4 &);
@@ -170,32 +169,6 @@ namespace motu{
 			return vmap.bind();
 		}
 
-		/*const MeshEdgeMap &edgeMap() const{
-			if (!mEdgeMap.get()) {
-				mEdgeMap = std::make_unique<MeshEdgeMap>(*this);
-			}
-			return *mEdgeMap;
-		}
-
-		const MeshTriangleMap &triangleMap() const {
-			if (!mTriangleMap.get()) {
-				mTriangleMap = std::make_unique<MeshTriangleMap>(*this);
-			}
-			return *mTriangleMap;
-		}*/
-
-		/*void ensureNormals() {
-			if (normals.size() != vertices.size()) {
-				calculateNormals();
-			}
-		}*/
-
-		/*void dirty() {
-			mEdgeMap = nullptr;
-			mTriangleMap = nullptr;
-			normals.clear();
-		}*/
-
 		friend std::ostream &operator<<(std::ostream &out, const Mesh &mesh) {
 			motu::writeOutVector(out, mesh.vertices);
 			motu::writeOutVector(out, mesh.triangles);
@@ -208,10 +181,6 @@ namespace motu{
 			mesh.calculateNormals(mesh);
 			return in;
 		}
-
-		/*private:
-			mutable std::unique_ptr<MeshEdgeMap> mEdgeMap;
-			mutable std::unique_ptr<MeshTriangleMap> mTriangleMap;*/
     };
 
 	struct MeshWithUV : public Mesh{

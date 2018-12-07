@@ -257,7 +257,7 @@ void motu::mapCoastlines(const Mesh &mesh, const MeshEdgeMap &mem, Coastlines &c
 	});
 }
 
-void motu::improveCliffs(Mesh &mesh, const MeshEdgeMap &mem, std::unordered_set<int> &cliffs) {
+void motu::improveCliffs(Mesh &mesh, const MeshEdgeMap &mem, Decoration &decoration) {
 	Coastlines coastlines;
 	mapCoastlines(mesh, mem, coastlines);
 	for (const auto &i : coastlines) {
@@ -270,9 +270,9 @@ void motu::improveCliffs(Mesh &mesh, const MeshEdgeMap &mem, std::unordered_set<
 					shift *= 0.95f;
 					mesh.vertices[j.first] += shift;
 					mesh.vertices[j.first].z = mesh.vertices[j.second].z;
-					cliffs.insert(j.first);
-					cliffs.insert(j.second);
-					cliffs.insert(idx);
+					decoration.addRock(j.first);
+					decoration.addRock(j.second);
+					decoration.addRock(idx);
 				}
 			}
 		}
@@ -397,74 +397,3 @@ void motu::formBeaches(Mesh &mesh, const MeshEdgeMap &mem) {
 		}
 	}
 }
-
-/*void motu::placeCoastalRocks(std::default_random_engine &rd, Decoration &decoration) {
-	MeshEdgeMap mep(decoration.mesh);
-	Coastlines coastlines;
-	CoastMapper coastMapper(decoration.mesh, mep);
-	//std::unordered_set<int> rocked;
-	std::uniform_real_distribution<float> full(0.0f, 1.0f);
-	std::uniform_real_distribution<float> half(0.5f, 1.0f);
-	std::uniform_real_distribution<float> quarter(0.25f, 0.5f);
-	std::uniform_real_distribution<float> eigth(0.125f, 0.25f);
-	coastMapper.findCoasts(coastlines, [&coastMapper](int offset, std::vector<std::pair<int, int>> &section) {
-		coastMapper.followCoastWithSeaCount(offset, section);
-	});
-	for (const auto &i : coastlines) {
-		for (const auto &j : *i) {
-			if (j.second > 0) {
-				if (decoration.occupied.find(j.first) == decoration.occupied.end() && full(rd) < GetRockChance(decoration.mesh, j.first)) {
-					decoration.occupied.insert(j.first);
-					decoration.bigRocks.push_back(decoration.mesh.vertices[j.first]);
-				}
-			}
-		}
-	}
-	for (const auto &i : coastlines) {
-		for (const auto &j : *i) {
-			if (j.second > 0) {
-				const Vector3 &middle = decoration.mesh.vertices[j.first];
-				auto neighbours = mep.vertex(j.first);
-				while (neighbours.first != neighbours.second) {
-					int offset = *neighbours.first++;
-					const Vector3 &neighbour = decoration.mesh.vertices[offset];
-					if (decoration.occupied.find(offset) == decoration.occupied.end()) {
-						if (full(rd) > GetRockChance(decoration.mesh, offset)) {
-							continue;
-						}
-						Vector3 shift = neighbour - middle;
-						if (!coastMapper.onCoast(offset) && decoration.mesh.vertices[offset].z > 0.0f) {
-							shift *= half(rd);
-							decoration.bigRocks.push_back(middle + shift);
-						}
-						else {
-							shift *= quarter(rd);
-							decoration.mediumRocks.push_back(middle + shift);
-						}
-						decoration.occupied.insert(offset);
-					}
-				}
-			}
-		}
-	}
-	for (const auto &i : coastlines) {
-		for (const auto &j : *i) {
-			if (j.second > 0) {
-				auto neighbours = mep.vertex(j.first);
-				while (neighbours.first != neighbours.second) {
-					int offset = *neighbours.first++;
-					const Vector3 &neighbour = decoration.mesh.vertices[offset];
-					auto neighboursNeighbours = mep.vertex(offset);
-					while (neighboursNeighbours.first != neighboursNeighbours.second) {
-						offset = *neighboursNeighbours.first++;
-						if (decoration.occupied.find(offset) == decoration.occupied.end()) {
-							const Vector3 &pos = decoration.mesh.vertices[offset];
-							decoration.smallRocks.push_back(neighbour + ((pos - neighbour) * eigth(rd)));
-							decoration.occupied.insert(offset);
-						}
-					}
-				}
-			}
-		}
-	}
-}*/

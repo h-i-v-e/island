@@ -41,8 +41,6 @@ namespace motu {
 			return mRivers;
 		}
 
-		//void addaptToTesselation(const Mesh &old, const Mesh &tesselated);
-
 		void smooth(Mesh &mesh, const MeshEdgeMap &) const;
 
 		void smooth(Mesh &mesh, const MeshEdgeMap &mem, int iterations) const{

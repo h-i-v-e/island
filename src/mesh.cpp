@@ -21,6 +21,7 @@
 #include "mesh_edge_map.h"
 #include "mesh_triangle_map.h"
 #include "matrix4.h"
+#include "decoration.h"
 
 using namespace motu;
 
@@ -674,9 +675,15 @@ void Mesh::smoothIfPositiveZ(const MeshEdgeMap &mem) {
 	});
 }
 
-void Mesh::smooth(const MeshEdgeMap &mem, const std::unordered_set<int> &exclude) {
-	Smooth(*this, mem, [&exclude](const Mesh &mesh, int offset) {
-		return exclude.find(offset) != exclude.end();
+void Mesh::smoothIfNegativeZ(const MeshEdgeMap &mem) {
+	Smooth(*this, mem, [](const Mesh &mesh, int offset) {
+		return mesh.vertices[offset].z >= 0.0f;
+	});
+}
+
+void Mesh::smooth(const MeshEdgeMap &mem, const Decoration &decoration) {
+	Smooth(*this, mem, [&decoration](const Mesh &mesh, int offset) {
+		return decoration.isRock(offset);
 	});
 }
 

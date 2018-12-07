@@ -15,7 +15,6 @@ set(sources
 	sea_erosian.cpp
 	rivers.cpp
 	dalauney.cpp
-	quantize_river.cpp
 	unity.cpp
 	decoration.cpp
 	pipe_erosian.cpp

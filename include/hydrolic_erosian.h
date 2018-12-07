@@ -12,12 +12,11 @@
 namespace motu {
 	struct Mesh;
 	class MeshEdgeMap;
+	class Decoration;
 
-	typedef std::unordered_set<int> RockSet;
+	Mesh &applyHydrolicErosian(std::default_random_engine &rd, Mesh &mesh, const MeshEdgeMap &mem, Decoration &decoration);
 
-	Mesh &applyHydrolicErosian(std::default_random_engine &rd, const RockSet &rock, Decoration &decoration);
-
-	Mesh &applyHydrolicErosian(Mesh &mesh, const MeshEdgeMap &mem, const RockSet &rock, bool includeSea = false);
+	Mesh &applyHydrolicErosian(Mesh &mesh, const MeshEdgeMap &mem, const Decoration &decoration, bool includeSea = false);
 }
 
 #endif
